@@ -399,8 +399,8 @@ SQL="SELECT now() AS sample_time, pid, leader_pid, datname, usename, application
             backend_type, backend_start, xact_start, query_start, state_change, state,
             wait_event_type, wait_event, query_id, query
        FROM pg_stat_activity
-      WHERE pid &lt;&gt; pg_backend_pid() AND query &lt;&gt; ''
-        AND (state = 'active' OR state_change &gt;= now() - interval '${INTERVALO} seconds')"
+      WHERE pid = pg_backend_pid()  -- marca o instante mesmo sem atividade
+         OR (query &lt;&gt; '' AND (state = 'active' OR state_change &gt;= now() - interval '${INTERVALO} seconds'))"
 HDR=HEADER; [ -s "$OUT" ] &amp;&amp; HDR=""
 while true; do
   psql "$CONN" -X -q -v ON_ERROR_STOP=1 -c "COPY ($SQL) TO STDOUT WITH (FORMAT csv $( [ -n "$HDR" ] &amp;&amp; echo ', HEADER'))" &gt;&gt; "$OUT" &amp;&amp; HDR=""
@@ -418,6 +418,8 @@ auto_explain.log_timing = off            # reduz o overhead do analyze
 auto_explain.log_verbose = on            # inclui o Query Identifier (PG 14+)
 auto_explain.log_format = json</pre></div>
       <p>Sem auto_explain, abra uma SQL no painel, gere o comando <span class="mono">EXPLAIN</span> na aba <b>Plano</b>, rode no banco e cole a saída ali mesmo.</p>
+      <h3>Aurora / RDS</h3>
+      <p>Use <span class="mono">tools/pg-top-activity/aurora/ash_aurora.sh</span>: coleta contínua numa EC2, baixa os logs do Aurora pela AWS (planos do auto_explain e SQLs lentas com binds) e envia os últimos 7 dias por email. Os dois anexos abrem aqui: o <span class="mono">.csv.gz</span> em <b>Abrir amostras…</b> e o <span class="mono">.log.gz</span> em <b>Abrir planos…</b>. Com os binds, a aba Plano gera o <span class="mono">EXPLAIN ANALYZE</span> com os valores reais.</p>
       <h3>Formatos aceitos</h3>
       <p>CSV (de <span class="mono">COPY</span>/<span class="mono">\copy</span>), TSV, JSON (array, <span class="mono">json_agg</span> ou uma linha por objeto), saída do psql em tabela ou em <span class="mono">\x</span>, e arquivos <span class="mono">.gz</span>. Só a coluna <span class="mono">query</span> é obrigatória; sem <span class="mono">sample_time</span>, o arquivo é tratado como uma foto única e o custo vira o tempo decorrido de cada execução. Tudo roda no seu navegador: nenhum dado sai da máquina.</p>
     </div>
@@ -529,6 +531,7 @@ function parseTs(v) {
   } else tsInfo.naive = true;
   return t;
 }
+function parseTsKeep(v) { const save = tsInfo; tsInfo = { offset: null, naive: false }; const t = parseTs(v); tsInfo = save; return t; }
 function parts(ms, off) {
   const d = new Date(ms + off * 60000);
   return { y: d.getUTCFullYear(), mo: d.getUTCMonth() + 1, d: d.getUTCDate(), h: d.getUTCHours(), mi: d.getUTCMinutes(), s: d.getUTCSeconds(), wd: d.getUTCDay() };
@@ -833,7 +836,7 @@ function buildModel(recs) {
 
 // ---------- estado ----------
 const state = {
-  model: null, demo: false, files: [], plans: [], planFiles: [], warnings: [],
+  model: null, demo: false, files: [], plans: [], stmts: [], planFiles: [], warnings: [], explainParams: {},
   filters: { db: '', user: '', app: '', bt: '', hideMon: true, text: '' },
   gran: 'auto', tzOff: 0, tzMode: 'data', stack: 'sql', cpus: 0,
   sel: null, sort: { key: 'time', dir: -1 }, showAll: false,
@@ -1328,12 +1331,14 @@ function parseNodeText(txt) {
 function planFromText(text) {
   let lines = cleanPsql(text).split('\n').map(l => l.replace(/\s+$/, '')).filter(l => l.trim());
   if (!lines.length) return null;
-  let queryText = null, qid = null, planning = null, execution = null;
+  let queryText = null, qid = null, planning = null, execution = null, params = null;
+  const PARAMS_RE = /^\s*Query Parameters:\s?/;
   if (/^\s*Query Text:/.test(lines[0])) {
     const q = [lines[0].replace(/^\s*Query Text:\s?/, '')]; let i = 1;
-    while (i < lines.length && !isNodeLine(lines[i])) { q.push(lines[i]); i++; }
+    while (i < lines.length && !isNodeLine(lines[i]) && !PARAMS_RE.test(lines[i])) { q.push(lines[i]); i++; }
     queryText = q.join('\n').trim(); lines = lines.slice(i);
   }
+  if (lines.length && PARAMS_RE.test(lines[0])) { params = lines[0].replace(PARAMS_RE, '').trim(); lines = lines.slice(1); }
   let root = null; const stack = [], extras = [];
   let pendingSub = null;
   for (const line of lines) {
@@ -1365,7 +1370,7 @@ function planFromText(text) {
     } else extras.push(t);
   }
   if (!root) return null;
-  return { root, queryText, qid, planning, execution, extras, format: 'text', raw: text.trim() };
+  return { root, queryText, qid, params, planning, execution, extras, format: 'text', raw: text.trim() };
 }
 const DETAIL_KEYS = ['Hash Cond', 'Merge Cond', 'Join Filter', 'Index Cond', 'Recheck Cond', 'Filter', 'Rows Removed by Filter', 'Rows Removed by Join Filter', 'Rows Removed by Index Recheck', 'Sort Key', 'Sort Method', 'Sort Space Used', 'Sort Space Type', 'Group Key', 'Presorted Key', 'Heap Fetches', 'Workers Planned', 'Workers Launched', 'Cache Key', 'Hits', 'Misses', 'Evictions', 'Peak Memory Usage', 'Batches', 'Disk Usage', 'Exact Heap Blocks', 'Lossy Heap Blocks', 'Conflict Resolution', 'Tuples Inserted', 'Conflicting Tuples'];
 function jsonLabel(n) {
@@ -1400,6 +1405,7 @@ function fromJsonNode(n) {
 function planFromJson(j) {
   return {
     root: fromJsonNode(j.Plan), queryText: j['Query Text'] || null, qid: j['Query Identifier'] != null ? String(j['Query Identifier']) : null,
+    params: j['Query Parameters'] || null,
     planning: j['Planning Time'] ?? null, execution: j['Execution Time'] ?? null, extras: [], format: 'json', raw: JSON.stringify(j, null, 2),
   };
 }
@@ -1430,8 +1436,7 @@ function scanLog(text, tsHint) {
   marks.forEach((mk, k) => {
     const seg = text.slice(mk.end, k + 1 < marks.length ? marks[k + 1].i : text.length);
     const ls = text.lastIndexOf('\n', mk.i) + 1, tsm = LOG_TS.exec(text.slice(ls, mk.i));
-    const save = tsInfo; tsInfo = { offset: null, naive: false };
-    const ts = parseTs(tsm ? tsm[1] : tsHint); tsInfo = save;
+    const ts = parseTsKeep(tsm ? tsm[1] : tsHint);
     const st = seg.trimStart();
     let p = null;
     if (st[0] === '{') {
@@ -1453,6 +1458,51 @@ function scanLog(text, tsHint) {
   });
   return out;
 }
+// "LOG: duration: X ms  execute <stmt>: SQL" seguido, no mesmo PID, de "DETAIL: parameters: $1 = '...'"
+function scanStatements(text) {
+  const out = [], msgs = [];
+  let cur = null;
+  for (const l of text.split(/\r?\n/)) {
+    if (l.startsWith('\t') && cur) cur.push(l.slice(1));
+    else { cur = [l]; msgs.push(cur); }
+  }
+  const lastByPid = new Map();
+  for (const m of msgs) {
+    const head = m[0];
+    const pid = (/\[(\d+)\]/.exec(head) || [])[1] || '';
+    const d = /duration: ([\d.]+) ms\s+(?:statement|execute [^:]*|bind [^:]*):\s?(.*)$/.exec(head);
+    if (d) {
+      const tsm = LOG_TS.exec(head);
+      const st = { dur: +d[1], text: [d[2], ...m.slice(1)].join('\n').trim(), params: null, ts: tsm ? parseTsKeep(tsm[1]) : null, pid };
+      if (st.text) { out.push(st); lastByPid.set(pid, st); }
+      continue;
+    }
+    const dp = /DETAIL:\s+parameters:\s?(.*)$/.exec(head);
+    if (dp && lastByPid.has(pid)) { lastByPid.get(pid).params = [dp[1], ...m.slice(1)].join('\n').trim(); }
+    lastByPid.delete(pid);
+  }
+  return out;
+}
+function addStmts(list, source) {
+  for (const st of list) { const c = normalizeSql(st.text); st.fp = c.fp; st.norm = c.norm; st.source = source; state.stmts.push(st); }
+}
+function matchesSql(s, fp, norm) {
+  if (fp && s.fps.has(fp)) return true;
+  if (norm && s.truncated) {
+    const head = s.norm.slice(0, Math.max(0, s.norm.lastIndexOf(' ')));
+    return head.length > 200 && norm.startsWith(head);
+  }
+  return false;
+}
+function stmtsForSql(s) { return state.stmts.filter(st => matchesSql(s, st.fp, st.norm)).sort((a, b) => b.dur - a.dur); }
+function parseParams(str) {
+  const m = new Map(); if (!str) return m;
+  const re = /\$(\d+)\s*=\s*(NULL|'(?:[^']|'')*'?)/g; let x;
+  while ((x = re.exec(str))) m.set(x[1], x[2]);
+  return m;
+}
+function substParams(sql, map) { return tokens(sql).map(k => k.type === 'prm' && map.has(k.t.slice(1)) ? map.get(k.t.slice(1)) : k.t).join(''); }
+
 function extractPlans(text) {
   text = text.replace(/^\uFEFF/, '');
   const out = [], tt = text.trim();
@@ -1478,6 +1528,7 @@ function extractPlans(text) {
 function analyzePlan(plan) {
   const hasTime = (function any(n) { return n.aTotal != null || n.children.some(any); })(plan.root);
   plan.analyze = hasTime;
+  plan.actualRows = (function any(n) { return n.aRows != null || n.children.some(any); })(plan.root);
   const walk = (n, div, underLimit) => {
     const loops = n.never ? 0 : (n.loops == null ? 1 : n.loops);
     n.incl = hasTime ? (n.aTotal || 0) * Math.max(loops / div, loops ? 1 : 0) : (n.totalCost || 0);
@@ -1486,7 +1537,7 @@ function analyzePlan(plan) {
     n.children.forEach(c => walk(c, cdiv, underLimit || /^Limit\b/.test(n.label)));
     n.excl = Math.max(0, n.incl - n.children.filter(c => !c.sub || !/^InitPlan|^CTE/.test(c.sub)).reduce((a, c) => a + c.incl, 0));
     n.flags = [];
-    if (hasTime && n.aRows != null && n.planRows != null && !n.never) {
+    if (n.aRows != null && n.planRows != null && !n.never) {
       const r = Math.max(n.aRows, 1) / Math.max(n.planRows, 1);
       if (r >= 10) n.flags.push({ t: 'estimativa ' + nf0.format(r) + '× abaixo', c: 'warn' });
       else if (r <= 0.1 && !underLimit) n.flags.push({ t: 'estimativa ' + nf0.format(1 / r) + '× acima', c: 'warn' });
@@ -1522,11 +1573,7 @@ function plansForSql(s) {
     if (p.sqlId && p.sqlId !== s.id) continue;
     if (p.sqlId === s.id) { out.push(p); continue; }
     if (s.qid && p.qid && p.qid === s.qid) { out.push(p); continue; }
-    if (p.fp && s.fps.has(p.fp)) { out.push(p); continue; }
-    if (p.norm && s.truncated) {
-      const head = s.norm.slice(0, Math.max(0, s.norm.lastIndexOf(' ')));
-      if (head.length > 200 && p.norm.startsWith(head)) out.push(p);
-    }
+    if (matchesSql(s, p.fp, p.norm)) out.push(p);
   }
   return out.sort((a, b) => (b.durationMs || b.execution || 0) - (a.durationMs || a.execution || 0));
 }
@@ -1541,17 +1588,25 @@ function loadSavedPlans() {
   }
 }
 
-function renderPlan(plan) {
+function bindsRow(params, onUse) {
+  const row = h('div', { class: 'opts', style: { alignItems: 'flex-start' } },
+    h('span', { class: 'muted', style: { fontSize: '12.5px' }, text: 'Binds' }),
+    h('code', { class: 'mono', style: { fontSize: '12px', flex: '1', minWidth: '0', wordBreak: 'break-word' }, text: params.length > 400 ? params.slice(0, 400) + '…' : params }));
+  if (onUse) row.append(h('button', { class: 'btn small', type: 'button', onclick: onUse, text: 'Usar no EXPLAIN' }));
+  return row;
+}
+function renderPlan(plan, onUseParams) {
   const box = h('div', { style: { display: 'grid', gap: '10px' } });
   const total = plan.analyze ? (plan.execution || plan.total) : plan.total;
   const sum = h('div', { class: 'plan-sum' });
   if (plan.analyze) sum.append(h('span', null, 'Tempo de execução ', h('b', { text: fmtDur(total) })));
-  else sum.append(h('span', null, 'Custo estimado ', h('b', { text: nf0.format(plan.root.totalCost || 0) }), ' (sem ANALYZE)'));
+  else sum.append(h('span', null, 'Custo estimado ', h('b', { text: nf0.format(plan.root.totalCost || 0) }), plan.actualRows ? ' (linhas reais medidas; sem tempo por nó, log_timing=off: % pelo custo)' : ' (sem ANALYZE)'));
   if (plan.planning != null) sum.append(h('span', null, 'Planejamento ', h('b', { text: fmtDur(plan.planning) })));
   if (plan.durationMs != null) sum.append(h('span', null, 'Duração no log ', h('b', { text: fmtDur(plan.durationMs) })));
   if (plan.ts != null) sum.append(h('span', null, 'Em ', h('b', { text: fmtDT(plan.ts, true) })));
   sum.append(h('span', null, 'Nó mais caro ', h('b', { text: plan.hot.label.split(' on ')[0] + ' (' + fmtPct(plan.hot.excl / plan.total) + ')' })));
   box.append(sum);
+  if (plan.params) box.append(bindsRow(plan.params, onUseParams));
   if (plan.durationMs != null && plan.analyze && plan.durationMs > 5 * plan.total && plan.durationMs - plan.total > 1000) {
     box.append(h('div', { class: 'callout', text: 'A duração no log (' + fmtDur(plan.durationMs) + ') é bem maior que o tempo somado dos nós (' + fmtDur(plan.total) + '). O tempo ficou fora da execução do plano: espera por lock, gatilhos ou envio de linhas ao cliente. Veja as esperas na aba Resumo.' }));
   }
@@ -1729,16 +1784,17 @@ function renderDrawer() {
   }
 }
 function statBox(l, v, d) { return h('div', { class: 'stat' }, h('div', { class: 'lbl', text: l }), h('div', { class: 'val', text: v }), h('div', { class: 'det', text: d || '' })); }
-function explainCmd(s, o) {
+function explainCmd(s, o, params) {
   const opts = [];
-  const hasParams = /\$\d/.test(s.text);
+  const text = params ? substParams(s.text, parseParams(params)) : s.text;
+  const hasParams = /\$\d/.test(text);
   const generic = hasParams && !o.analyze;
   if (o.analyze) opts.push('ANALYZE');
   if (o.buffers) opts.push('BUFFERS');
   if (o.verbose) opts.push('VERBOSE');
   if (generic) opts.push('GENERIC_PLAN');
   if (o.json) opts.push('FORMAT JSON');
-  let sql = s.text.trim().replace(/;\s*$/, '');
+  let sql = text.trim().replace(/;\s*$/, '');
   let cmd = 'EXPLAIN ' + (opts.length ? '(' + opts.join(', ') + ')' : '') + '\n' + sql + ';';
   const dml = /^\s*(?:with\b[\s\S]*?\)\s*)?(insert|update|delete|merge)\b/i.test(sql) || /^\s*(insert|update|delete|merge)\b/i.test(sql);
   if (o.analyze && dml) cmd = 'BEGIN;\n' + cmd + '\nROLLBACK;  -- ANALYZE executa a SQL de verdade; o ROLLBACK desfaz a alteração';
@@ -1752,13 +1808,31 @@ function renderPlanTab(body, s, plans) {
       const lbl = (p.source === 'colado' ? 'colado' : p.source) + (p.ts != null ? ' · ' + fmtDT(p.ts) : '') + ' · ' + (p.durationMs != null ? fmtDur(p.durationMs) : p.analyze ? fmtDur(p.execution || p.total) : 'custo ' + nf0.format(p.root.totalCost || 0));
       pick.append(h('button', { type: 'button', 'aria-pressed': String(p === cur), onclick: () => { state.planChoice[s.id] = p.id; renderDrawer(); }, text: lbl }));
     });
-    const sec = h('section', null, h('h4', { text: plans.length > 1 ? 'Planos encontrados (' + plans.length + ')' : 'Plano encontrado' }), plans.length > 1 ? pick : h('div', { class: 'muted', style: { fontSize: '12.5px' }, text: 'Origem: ' + (cur.source === 'colado' ? 'colado por você neste navegador' : cur.source) }), renderPlan(cur));
+    const useP = () => { state.explainParams[s.id] = { params: cur.params, label: 'do plano de ' + (cur.ts != null ? fmtDT(cur.ts, true) : cur.source) }; renderDrawer(); $('#explainSec')?.scrollIntoView({ block: 'nearest' }); };
+    const sec = h('section', null, h('h4', { text: plans.length > 1 ? 'Planos encontrados (' + plans.length + ')' : 'Plano encontrado' }), plans.length > 1 ? pick : h('div', { class: 'muted', style: { fontSize: '12.5px' }, text: 'Origem: ' + (cur.source === 'colado' ? 'colado por você neste navegador' : cur.source) }), renderPlan(cur, useP));
     if (cur.source === 'colado') sec.append(h('div', null, h('button', { class: 'btn small', type: 'button', onclick: () => { LS.set('plan:' + s.id, null); state.plans = state.plans.filter(p => p !== cur); renderDrawer(); renderNotice(); }, text: 'Remover plano colado' })));
     body.append(sec);
   } else {
     body.append(h('div', { class: 'callout info', text: state.plans.length
       ? 'Nenhum dos ' + state.plans.length + ' planos carregados corresponde a esta SQL. Cole a saída de um EXPLAIN abaixo ou carregue um log do auto_explain que a contenha.'
       : 'Ainda não há plano para esta SQL. Carregue um log do auto_explain em "Abrir planos…" ou gere o EXPLAIN abaixo, rode no banco e cole o resultado.' }));
+  }
+  // SQLs lentas registradas no log, com binds
+  const stmts = stmtsForSql(s);
+  if (stmts.length) {
+    const tb = h('tbody');
+    for (const st of stmts.slice(0, 15)) {
+      const use = st.params ? h('button', { class: 'btn small', type: 'button', text: 'Usar no EXPLAIN', onclick: () => { state.explainParams[s.id] = { params: st.params, label: 'da execução de ' + (st.ts != null ? fmtDT(st.ts, true) : '?') + ' (' + fmtDur(st.dur) + ')' }; renderDrawer(); $('#explainSec')?.scrollIntoView({ block: 'nearest' }); } }) : null;
+      tb.append(h('tr', null,
+        h('td', { class: 'num', style: { whiteSpace: 'nowrap' }, text: st.ts != null ? fmtDT(st.ts, true) : '—' }),
+        h('td', { class: 'r', text: fmtDur(st.dur) }),
+        h('td', { class: 'mono', style: { fontSize: '12px', wordBreak: 'break-word' }, text: st.params ? (st.params.length > 240 ? st.params.slice(0, 240) + '…' : st.params) : (/\$\d/.test(st.text) ? 'sem binds no log' : 'valores no próprio texto') }),
+        h('td', null, use)));
+    }
+    body.append(h('section', null,
+      h('h4', { text: 'Execuções lentas no log (' + nf0.format(stmts.length) + ')' }),
+      h('div', { class: 'tbl-wrap', style: { margin: 0, padding: 0 } }, h('table', { class: 'data' },
+        h('thead', null, h('tr', null, ['Quando', 'Duração', 'Binds', ''].map((t, i) => h('th', { class: i === 1 ? 'r' : '', text: t })))), tb))));
   }
   // colar
   const ta = h('textarea', { class: 'paste', id: 'pastePlan', placeholder: 'Cole aqui a saída do EXPLAIN (texto ou FORMAT JSON) ou um trecho de log do auto_explain', spellcheck: 'false' });
@@ -1785,10 +1859,12 @@ function renderPlanTab(body, s, plans) {
   try { Object.assign(o, JSON.parse(LS.get('explainOpts') || '{}')); } catch (e) { /* padrão */ }
   const pre = h('pre', { class: 'raw' });
   const note = h('div', { class: 'muted', style: { fontSize: '12.5px' } });
+  const ep = state.explainParams[s.id];
   const upd = () => {
-    const r = explainCmd(s, o);
+    const r = explainCmd(s, o, ep && ep.params);
     pre.textContent = r.cmd;
     const notes = [];
+    if (ep) notes.push('Binds substituídos pelos valores ' + ep.label + '.');
     if (r.generic) notes.push('A SQL tem parâmetros ($1, $2…): GENERIC_PLAN (PostgreSQL 16+) mostra o plano genérico sem valores. Para ANALYZE, troque os parâmetros por valores reais.');
     if (o.analyze) notes.push('ANALYZE executa a SQL de verdade e leva o mesmo tempo que ela.');
     if (s.truncated) notes.push('Atenção: o texto está cortado; complete a SQL antes de rodar.');
@@ -1798,7 +1874,8 @@ function renderPlanTab(body, s, plans) {
   const cp = h('button', { class: 'btn small', type: 'button', text: 'Copiar' });
   cp.addEventListener('click', () => copyText(pre.textContent, cp));
   upd();
-  body.append(h('section', null, h('h4', null, h('span', { text: 'Gerar comando EXPLAIN' }), cp),
+  const clr = ep ? h('button', { class: 'btn small ghost', type: 'button', text: 'Voltar aos parâmetros $1…', onclick: () => { delete state.explainParams[s.id]; renderDrawer(); } }) : null;
+  body.append(h('section', { id: 'explainSec' }, h('h4', null, h('span', { text: 'Gerar comando EXPLAIN' }), h('span', { style: { display: 'flex', gap: '6px' } }, clr, cp)),
     h('div', { class: 'opts' }, cb('analyze', 'ANALYZE'), cb('buffers', 'BUFFERS'), cb('verbose', 'VERBOSE'), cb('json', 'FORMAT JSON')), note, pre));
 }
 
@@ -1812,6 +1889,7 @@ function renderNotice() {
   else box.append(h('span', null, h('b', { text: state.files.join(', ') }), ' · ' + nf0.format(M.rows) + ' linhas · ' + nf0.format(M.sqls.length) + ' SQLs distintas'));
   const planFrom = state.plans.filter(p => p.source !== 'colado').length, pasted = state.plans.length - planFrom;
   if (state.plans.length) box.append(h('span', { class: 'ink2', text: nf0.format(planFrom) + ' planos carregados' + (pasted ? ' · ' + pasted + ' colados' : '') }));
+  if (state.stmts.length) box.append(h('span', { class: 'ink2', text: nf0.format(state.stmts.length) + ' SQLs lentas do log (' + nf0.format(state.stmts.filter(x => x.params).length) + ' com binds)' }));
   const w = state.warnings.slice();
   if (!M.sampled) w.push('Sem coluna sample_time (ou só uma amostra): tratado como foto única. Para ver a carga ao longo do dia, colete amostras periódicas (veja "Como coletar").');
   if (M.naive) w.push('Os horários não têm fuso; exibidos como estão no arquivo.');
@@ -1857,7 +1935,7 @@ function loadModel(recs, files, demo) {
   normCache.clear();
   state.model = buildModel(recs);
   state.files = files; state.demo = demo;
-  state.sel = null; state.openSql = null; state.showAll = false; state.planChoice = {};
+  state.sel = null; state.openSql = null; state.showAll = false; state.planChoice = {}; state.explainParams = {};
   state.filters = { ...state.filters, db: '', user: '', app: '', bt: '', text: '' };
   $('#fText').value = '';
   $('#drawer').hidden = true;
@@ -1869,7 +1947,7 @@ function loadModel(recs, files, demo) {
 function looksLikePlanFile(name, text) {
   if (/explain|plan|auto_?explain|postgresql.*\.log/i.test(name)) return true;
   const head = text.slice(0, 200000);
-  return /duration: [\d.]+ ms\s+plan:/.test(head) || /"Plan"\s*:\s*\{/.test(head) || /^\s*QUERY PLAN\s*$/m.test(head);
+  return /duration: [\d.]+ ms\s+(?:plan:|execute |statement:)/.test(head) || /"Plan"\s*:\s*\{/.test(head) || /^\s*QUERY PLAN\s*$/m.test(head);
 }
 async function handleFiles(fileList, kind) {
   const files = [...fileList];
@@ -1890,16 +1968,16 @@ async function handleFiles(fileList, kind) {
         catch (e) { state.warnings.push(name + ': ' + e.message); }
       }
       if (!recs.length) throw new Error('Nenhuma linha válida encontrada. ' + state.warnings.join(' '));
-      if (state.demo) state.plans = [];
+      if (state.demo) { state.plans = []; state.stmts = []; }
       const warns = state.warnings;
       loadModel(recs, actTexts.map(x => x.name), false);
       state.warnings = warns;
     }
     for (const { name, text } of planTexts) {
-      const ps = extractPlans(text);
-      if (!ps.length) { state.warnings.push(name + ': nenhum plano reconhecido.'); continue; }
-      if (state.demo && !actTexts.length) { /* mantém exemplo */ }
+      const ps = extractPlans(text), sts = scanStatements(text);
+      if (!ps.length && !sts.length) { state.warnings.push(name + ': nenhum plano nem SQL lenta reconhecidos.'); continue; }
       addPlans(ps, name);
+      addStmts(sts, name);
       const orphan = ps.filter(p => !p.queryText && !p.qid).length;
       if (orphan) state.warnings.push(name + ': ' + orphan + ' plano(s) sem o texto da SQL. Para usá-los, abra a SQL e cole o plano na aba Plano.');
     }
@@ -2079,13 +2157,21 @@ Update on estoque  (cost=0.29..8.31 rows=0 width=0) (actual time=2348811.21..234
 Planning Time: 0.091 ms
 Execution Time: 2348811.288 ms`);
   log += '2026-10-21 15:41:05.312 -03 [60123] joao.dba@loja LOG:  statement: COMMIT\n';
+  [['2026-10-20 11:02:17.204', 41004, '1412.882', "'7'"], ['2026-10-21 15:38:40.918', 41009, '2210.415', "'7'"], ['2026-10-22 10:47:03.551', 41012, '980.120', "'31'"]].forEach(([w, pid, d, v]) => {
+    log += `${w} -03 [${pid}] app_web@loja LOG:  duration: ${d} ms  execute S_12: ${SHORT[0].text().split('\n').join('\n\t')}\n`;
+    log += `${w} -03 [${pid}] app_web@loja DETAIL:  parameters: $1 = ${v}\n`;
+  });
+  log += `2026-10-21 09:12:44.020 -03 [41002] app_web@loja LOG:  duration: 1183.004 ms  execute S_3: ${SHORT[3].text()}\n`;
+  log += `2026-10-21 09:12:44.020 -03 [41002] app_web@loja DETAIL:  parameters: $1 = '88213', $2 = 'LOGIN', $3 = '{"ip": "189.6.1.20"}'\n`;
   return { rows, log };
 }
 function loadDemo() {
   const { rows, log } = generateDemo();
   state.plans = state.plans.filter(p => p.source === 'colado');
   loadModel(rows, ['exemplo'], true);
+  state.stmts = [];
   addPlans(extractPlans(log), 'auto_explain (exemplo)');
+  addStmts(scanStatements(log), 'log (exemplo)');
   renderNotice();
 }
 

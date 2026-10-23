@@ -55,6 +55,11 @@ coleta: `DURACAO=86400`.
 Veja `coleta_pg_activity.sql`: cria a tabela `ash_amostras`, agenda a amostra a cada 15 s
 e a limpeza diária. Depois exporte com `\copy ... TO 'ash.csv' WITH (FORMAT csv, HEADER)`.
 
+### Aurora / RDS numa EC2
+
+Veja [`aurora/README.md`](aurora/README.md): coleta contínua com systemd, download dos logs
+do Aurora pela AWS (planos do auto_explain e SQLs lentas com binds) e envio semanal por email.
+
 ### Planos com auto_explain
 
 ```ini
@@ -69,7 +74,10 @@ auto_explain.log_format = json
 
 Abra o `postgresql-*.log` (pode ser `.gz`) em **Abrir planos…**. Os planos são ligados às
 SQLs pelo `Query Identifier` ou pelo texto normalizado. Logs `stderr`, `jsonlog` e saídas
-de `EXPLAIN` coladas do psql são reconhecidos.
+de `EXPLAIN` coladas do psql são reconhecidos. Do mesmo log saem as SQLs lentas do
+`log_min_duration_statement` com seus binds (`DETAIL: parameters:`) e os
+`Query Parameters` do auto_explain (PostgreSQL 16+). Na aba **Plano**, **Usar no EXPLAIN**
+troca `$1, $2…` por esses valores para rodar o `EXPLAIN ANALYZE` com o caso real.
 
 ## Formatos de amostras aceitos
 

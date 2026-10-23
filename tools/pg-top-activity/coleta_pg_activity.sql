@@ -13,9 +13,8 @@ CREATE INDEX IF NOT EXISTS ash_amostras_sample_time_idx ON ash_amostras (sample_
 SELECT cron.schedule('ash-amostra', '15 seconds', $$
   INSERT INTO ash_amostras
   SELECT now(), * FROM pg_stat_activity
-   WHERE pid <> pg_backend_pid()
-     AND query <> ''
-     AND (state = 'active' OR state_change >= now() - interval '15 seconds')
+   WHERE pid = pg_backend_pid()   -- marca o instante mesmo com o banco ocioso
+      OR (query <> '' AND (state = 'active' OR state_change >= now() - interval '15 seconds'))
 $$);
 
 -- Retencao de 14 dias.

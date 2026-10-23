@@ -1,0 +1,20 @@
+# Coleta continua do pg_stat_activity do Aurora, reiniciada sozinha se cair ou se a EC2 reiniciar.
+# Ajuste User e os caminhos, depois:
+#   sudo cp ash-aurora-coleta.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now ash-aurora-coleta
+#   journalctl -u ash-aurora-coleta -f
+[Unit]
+Description=Coleta ASH do Aurora PostgreSQL (pg_stat_activity)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=admin
+WorkingDirectory=/home/admin/scripts_manut_postgres_18
+ExecStart=/home/admin/scripts_manut_postgres_18/ash_aurora.sh coletar
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
