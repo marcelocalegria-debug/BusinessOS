@@ -1,0 +1,2127 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PG Top Activity</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: painel denso estilo console de DBA — barra de arquivos, filtros, KPIs,
+   linha do tempo empilhada, mapa de calor dia x hora, Top SQL e gaveta lateral de detalhe. */
+:root {
+  --bg: #f2f3f1;
+  --surface: #fcfcfb;
+  --surface-2: #eeefec;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #74726c;
+  --grid: #e4e3dc;
+  --axis: #c3c2b7;
+  --line: rgba(11, 11, 11, .10);
+  --line-2: rgba(11, 11, 11, .20);
+  --accent: #1c5cab;
+  --accent-ink: #ffffff;
+  --accent-wash: rgba(42, 120, 214, .10);
+  --sel: rgba(42, 120, 214, .14);
+  --hover: rgba(11, 11, 11, .06);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948; --s0: #b9b7af;
+  --h0: #eeefec; --h1: #cde2fb; --h2: #9ec5f4; --h3: #6da7ec; --h4: #3987e5; --h5: #256abf; --h6: #104281;
+  --crit: #b8302f; --crit-wash: rgba(208, 59, 59, .10);
+  --warn: #8a5a00; --warn-wash: rgba(250, 178, 25, .18);
+  --good: #006300;
+  --code-bg: #f5f5f2; --kw: #1c5cab; --str: #9a4a00; --num: #7a3db8; --cm: #898781;
+  --shadow: 0 16px 48px rgba(0, 0, 0, .18);
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e0e0d; --surface: #1a1a19; --surface-2: #242422; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #9a988f;
+    --grid: #2c2c2a; --axis: #46463f; --line: rgba(255, 255, 255, .10); --line-2: rgba(255, 255, 255, .20);
+    --accent: #6da7ec; --accent-ink: #0b0b0b; --accent-wash: rgba(85, 152, 231, .14); --sel: rgba(85, 152, 231, .18);
+    --hover: rgba(255, 255, 255, .07);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --s0: #5c5b56;
+    --h0: #242422; --h1: #0d366b; --h2: #184f95; --h3: #256abf; --h4: #3987e5; --h5: #6da7ec; --h6: #b7d3f6;
+    --crit: #ef7b7b; --crit-wash: rgba(230, 103, 103, .14); --warn: #f2c25a; --warn-wash: rgba(250, 178, 25, .14); --good: #0ca30c;
+    --code-bg: #141413; --kw: #7fb0f0; --str: #e0a86a; --num: #c3a6f5; --cm: #8a887f;
+    --shadow: 0 16px 48px rgba(0, 0, 0, .6);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e0e0d; --surface: #1a1a19; --surface-2: #242422; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #9a988f;
+  --grid: #2c2c2a; --axis: #46463f; --line: rgba(255, 255, 255, .10); --line-2: rgba(255, 255, 255, .20);
+  --accent: #6da7ec; --accent-ink: #0b0b0b; --accent-wash: rgba(85, 152, 231, .14); --sel: rgba(85, 152, 231, .18);
+  --hover: rgba(255, 255, 255, .07);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --s0: #5c5b56;
+  --h0: #242422; --h1: #0d366b; --h2: #184f95; --h3: #256abf; --h4: #3987e5; --h5: #6da7ec; --h6: #b7d3f6;
+  --crit: #ef7b7b; --crit-wash: rgba(230, 103, 103, .14); --warn: #f2c25a; --warn-wash: rgba(250, 178, 25, .14); --good: #0ca30c;
+  --code-bg: #141413; --kw: #7fb0f0; --str: #e0a86a; --num: #c3a6f5; --cm: #8a887f;
+  --shadow: 0 16px 48px rgba(0, 0, 0, .6);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font); }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mono { font-family: var(--mono); }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.ink2 { color: var(--ink-2); }
+
+.wrap {
+  max-width: 1480px; margin: 0 auto; display: grid; gap: 14px;
+  padding-block: 16px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.logo { width: 34px; height: 34px; border-radius: 7px; background: var(--ink); display: grid; place-items: center; flex: none; }
+.logo svg { display: block; }
+h1 { font-size: 19px; line-height: 1.2; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+.sub { color: var(--ink-2); margin: 1px 0 0; font-size: 13px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
+  border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface); cursor: pointer;
+  font-size: 13px; font-weight: 500; white-space: nowrap;
+}
+.btn:hover { background: var(--hover); }
+.btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.btn.primary:hover { opacity: .9; }
+.btn.small { height: 26px; padding: 0 9px; font-size: 12px; }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.ghost:hover { background: var(--hover); }
+
+.notice {
+  display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 13px;
+  padding: 8px 12px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line);
+}
+.notice.demo { background: var(--warn-wash); border-color: transparent; }
+.notice b { font-weight: 600; }
+.notice ul { margin: 0; padding-left: 18px; }
+.warnlist { color: var(--warn); }
+
+.filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; }
+.field { display: grid; gap: 3px; min-width: 0; }
+.field > span { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.field select, .field input[type="number"], .field input[type="search"] {
+  height: 30px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface); padding: 0 8px; max-width: 220px;
+}
+.field input[type="number"] { width: 84px; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; height: 30px; }
+.seg-ctl { display: inline-flex; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; height: 30px; }
+.seg-ctl button { border: 0; background: var(--surface); padding: 0 10px; cursor: pointer; font-size: 13px; }
+.seg-ctl button + button { border-left: 1px solid var(--line-2); }
+.seg-ctl button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.seg-ctl button:disabled { opacity: .45; cursor: not-allowed; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 6px 0 10px; border-radius: 15px;
+  background: var(--accent-wash); color: var(--ink); font-size: 13px; border: 1px solid var(--accent);
+}
+.chip button { border: 0; background: transparent; cursor: pointer; width: 20px; height: 20px; border-radius: 10px; line-height: 1; }
+.chip button:hover { background: var(--hover); }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; min-width: 0; }
+.kpi .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.kpi .val { font-size: 22px; font-weight: 600; letter-spacing: -.01em; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .det { font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px 14px; min-width: 0; }
+.card-h { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; margin-bottom: 8px; }
+.card-h h2 { font-size: 14px; margin: 0; font-weight: 600; }
+.card-h .hint { font-size: 12px; color: var(--muted); }
+.chart { position: relative; width: 100%; min-width: 0; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.chart svg { display: block; overflow: visible; }
+.chart text { fill: var(--muted); font-size: 11px; font-family: var(--font); font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 8px; }
+.lg {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 340px; min-width: 0; padding: 2px 8px 2px 4px; border-radius: 4px;
+  border: 0; background: transparent; cursor: pointer; font-size: 12px; color: var(--ink-2); text-align: left;
+}
+.lg:hover { background: var(--hover); }
+.lg.static { cursor: default; }
+.lg.static:hover { background: transparent; }
+.sw { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.lg .id { font-family: var(--mono); color: var(--ink); font-size: 11.5px; }
+.lg .tx { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+
+.heat-scale { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
+.heat-scale i { width: 14px; height: 10px; border-radius: 2px; display: inline-block; }
+
+.tbl-wrap { overflow-x: auto; margin: 0 -14px; padding: 0 14px; }
+table.data { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.data th {
+  text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+  padding: 6px 8px; border-bottom: 1px solid var(--line-2); white-space: nowrap; position: sticky; top: 0; background: var(--surface);
+}
+table.data th.sortable { cursor: pointer; }
+table.data th.sortable:hover { color: var(--ink); }
+table.data th.r, table.data td.r { text-align: right; white-space: nowrap; }
+table.data td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; font-variant-numeric: tabular-nums; }
+table.data tbody tr.click { cursor: pointer; }
+table.data tbody tr.click:hover { background: var(--hover); }
+table.data tbody tr.on { background: var(--accent-wash); }
+td.sqltext { max-width: 460px; font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pct { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+.pct .bar { flex: 1; height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; min-width: 50px; }
+.pct .bar i { display: block; height: 100%; border-radius: 3px; }
+.pct span { width: 46px; text-align: right; }
+.waitbar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; width: 90px; background: var(--surface-2); gap: 1px; }
+.waitbar i { display: block; height: 100%; }
+.tag {
+  display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 3px; background: var(--surface-2); color: var(--ink-2);
+  white-space: nowrap; font-weight: 500;
+}
+.tag.crit { background: var(--crit-wash); color: var(--crit); }
+.tag.warn { background: var(--warn-wash); color: var(--warn); }
+.more { margin-top: 10px; }
+
+/* tooltip */
+#tip {
+  position: fixed; z-index: 50; pointer-events: none; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line-2); border-radius: 6px; box-shadow: var(--shadow); padding: 8px 10px; font-size: 12px;
+  max-width: min(380px, calc(100vw - 24px)); min-width: 180px;
+}
+#tip .t-h { color: var(--ink-2); margin-bottom: 4px; }
+#tip .t-tot { font-size: 13px; margin-bottom: 6px; }
+#tip .t-row { display: grid; grid-template-columns: 12px auto minmax(0, 1fr); gap: 7px; align-items: center; line-height: 1.6; }
+#tip .t-row .k { width: 12px; height: 2px; border-radius: 1px; }
+#tip .t-row b { font-variant-numeric: tabular-nums; }
+#tip .t-row span { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tip .t-row.cur span { color: var(--ink); }
+#tip .t-foot { color: var(--muted); margin-top: 6px; font-size: 11px; }
+
+/* gaveta de detalhe */
+#drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(900px, 100vw); z-index: 40; background: var(--surface);
+  border-left: 1px solid var(--line-2); box-shadow: var(--shadow); display: flex; flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); padding-right: env(safe-area-inset-right, 0px);
+}
+.dr-h { display: flex; align-items: center; gap: 10px; padding: 12px 16px 0; }
+.dr-h .sw { width: 12px; height: 12px; }
+.dr-h h3 { margin: 0; font-size: 15px; font-weight: 600; min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dr-h h3 .mono { font-weight: 600; }
+.tabs { display: flex; gap: 2px; padding: 8px 16px 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tabs button {
+  border: 0; background: transparent; padding: 8px 12px; cursor: pointer; font-size: 13px; color: var(--ink-2);
+  border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap;
+}
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+.dr-b { flex: 1; overflow-y: auto; padding: 14px 16px 32px; display: grid; gap: 16px; align-content: start; min-width: 0; }
+.dr-b section { display: grid; gap: 8px; min-width: 0; }
+.dr-b h4 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; display: flex; align-items: center; gap: 10px; justify-content: space-between; flex-wrap: wrap; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.stat { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-width: 0; }
+.stat .lbl { font-size: 11px; color: var(--muted); }
+.stat .val { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat .det { font-size: 11.5px; color: var(--ink-2); }
+pre.sql, pre.raw {
+  margin: 0; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px;
+  font: 12.5px/1.55 var(--mono); overflow: auto; max-height: 420px; white-space: pre-wrap; word-break: break-word; tab-size: 4;
+}
+pre.raw { white-space: pre; word-break: normal; }
+.kw { color: var(--kw); font-weight: 600; }
+.str { color: var(--str); }
+.nm { color: var(--num); }
+.cm { color: var(--cm); font-style: italic; }
+.prm { color: var(--num); font-weight: 600; }
+.origin { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; font-size: 12.5px; }
+.origin ol { margin: 4px 0 0; padding-left: 0; list-style: none; display: grid; gap: 2px; }
+.origin li { display: flex; justify-content: space-between; gap: 8px; }
+.origin li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.waitrows { display: grid; gap: 4px; font-size: 12.5px; }
+.waitrows div { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; }
+.waitstack { display: flex; height: 12px; border-radius: 3px; overflow: hidden; gap: 2px; }
+.waitstack i { display: block; height: 100%; }
+.callout { font-size: 12.5px; padding: 8px 10px; border-radius: 6px; background: var(--warn-wash); color: var(--ink); }
+.callout.info { background: var(--accent-wash); }
+.opts { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 13px; }
+textarea.paste {
+  width: 100%; min-height: 140px; resize: vertical; border: 1px solid var(--line-2); border-radius: 6px; background: var(--code-bg);
+  padding: 8px 10px; font: 12px/1.5 var(--mono);
+}
+.planpick { display: flex; flex-wrap: wrap; gap: 6px; }
+.planpick button {
+  border: 1px solid var(--line-2); background: var(--surface); border-radius: 6px; padding: 4px 9px; cursor: pointer; font-size: 12px; text-align: left;
+}
+.planpick button[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--bg); }
+.plan-sum { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--ink-2); }
+.plan-sum b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.ptree { font-size: 12.5px; overflow-x: auto; padding-bottom: 4px; }
+.pn { min-width: 520px; }
+.pn-kids { margin-left: 13px; padding-left: 12px; border-left: 1px solid var(--line-2); }
+.pn-row {
+  display: grid; grid-template-columns: 74px 44px minmax(0, 1fr); gap: 8px; align-items: center; padding: 5px 6px; border-radius: 4px; cursor: pointer;
+}
+.pn-row:hover { background: var(--hover); }
+.pn.hot > .pn-row { background: var(--crit-wash); }
+.pn-bar { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.pn-bar i { display: block; height: 100%; background: var(--ink-2); border-radius: 3px; }
+.pn.hot > .pn-row .pn-bar i { background: var(--crit); }
+.pn-pct { text-align: right; font-variant-numeric: tabular-nums; font-size: 12px; color: var(--ink-2); }
+.pn.hot > .pn-row .pn-pct { color: var(--crit); font-weight: 600; }
+.pn-label { min-width: 0; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.pn-label .nt { font-weight: 600; }
+.pn-label .sub2 { font-size: 11px; color: var(--muted); }
+.pn-meta { margin-left: 134px; font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; padding: 0 6px; }
+.pn-det { margin: 2px 0 4px 134px; padding: 0 6px; list-style: none; font: 11.5px/1.5 var(--mono); color: var(--muted); }
+.pn.collapsed > .pn-kids, .pn.collapsed > .pn-det { display: none; }
+.pn-tw { font-size: 10px; color: var(--muted); width: 10px; display: inline-block; }
+
+details.howto > summary { cursor: pointer; font-weight: 600; font-size: 14px; list-style: none; display: flex; align-items: center; gap: 8px; }
+details.howto > summary::-webkit-details-marker { display: none; }
+details.howto > summary::before { content: "▸"; color: var(--muted); font-size: 12px; }
+details.howto[open] > summary::before { content: "▾"; }
+.howto-body { display: grid; gap: 12px; margin-top: 12px; font-size: 13.5px; max-width: 920px; }
+.howto-body p { margin: 0; max-width: 72ch; }
+.howto-body h3 { margin: 6px 0 0; font-size: 13px; }
+.codebox { position: relative; }
+.codebox .btn { position: absolute; top: 6px; right: 6px; }
+
+#drop {
+  position: fixed; inset: 0; z-index: 60; background: color-mix(in srgb, var(--bg) 85%, transparent); display: grid; place-items: center;
+  border: 3px dashed var(--accent); font-size: 18px; font-weight: 600;
+}
+.loading { opacity: .5; transition: opacity .15s; }
+.empty { padding: 28px; text-align: center; color: var(--muted); }
+
+@media (max-width: 720px) {
+  .kpi .val { font-size: 19px; }
+  .pn-meta, .pn-det { margin-left: 24px; }
+  td.sqltext { max-width: 220px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+@media (forced-colors: active) { .sw, .pct .bar i, .waitbar i { forced-color-adjust: none; } }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <header class="top">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 20 20"><rect x="2" y="11" width="3" height="7" rx="1" fill="#3987e5"/><rect x="6.5" y="6" width="3" height="12" rx="1" fill="#eb6834"/><rect x="11" y="9" width="3" height="9" rx="1" fill="#1baf7a"/><rect x="15.5" y="3" width="3" height="15" rx="1" fill="#eda100"/></svg>
+      </div>
+      <div>
+        <h1>PG Top Activity</h1>
+        <p class="sub">Análise offline de amostras do <span class="mono">pg_stat_activity</span>: carga por dia e hora, SQLs mais custosas e seus planos.</p>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="btnOpen" type="button">Abrir amostras…</button>
+      <button class="btn" id="btnPlans" type="button">Abrir planos…</button>
+      <button class="btn" id="btnDemo" type="button">Dados de exemplo</button>
+      <input type="file" id="fileAct" multiple accept=".csv,.tsv,.txt,.json,.log,.gz,.out" hidden>
+      <input type="file" id="filePlan" multiple accept=".log,.json,.txt,.csv,.gz" hidden>
+    </div>
+  </header>
+
+  <div id="notice" class="notice" aria-live="polite"></div>
+
+  <div class="filters" id="filters">
+    <label class="field"><span>Banco</span><select id="fDb"></select></label>
+    <label class="field"><span>Usuário</span><select id="fUser"></select></label>
+    <label class="field"><span>Aplicação</span><select id="fApp"></select></label>
+    <label class="field"><span>Tipo de backend</span><select id="fBt"></select></label>
+    <label class="field"><span>Granularidade</span>
+      <select id="fGran">
+        <option value="auto">Automática</option>
+        <option value="10000">10 s</option>
+        <option value="30000">30 s</option>
+        <option value="60000">1 min</option>
+        <option value="300000">5 min</option>
+        <option value="900000">15 min</option>
+        <option value="1800000">30 min</option>
+        <option value="3600000">1 hora</option>
+        <option value="86400000">1 dia</option>
+      </select>
+    </label>
+    <label class="field"><span>Fuso horário</span><select id="fTz"></select></label>
+    <div class="field"><span>Empilhar por</span>
+      <div class="seg-ctl" role="group" aria-label="Empilhar por">
+        <button type="button" id="stSql" aria-pressed="true">SQL</button>
+        <button type="button" id="stWait" aria-pressed="false">Classe de espera</button>
+      </div>
+    </div>
+    <label class="field"><span>Núcleos de CPU</span><input type="number" id="fCpu" min="0" max="1024" step="1" placeholder="—"></label>
+    <label class="check"><input type="checkbox" id="fMon" checked> Ocultar a própria coleta</label>
+    <span id="selChip"></span>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <section class="card" aria-labelledby="tlTitle">
+    <div class="card-h">
+      <h2 id="tlTitle">Sessões ativas médias</h2>
+      <span class="hint" id="tlHint">Clique numa barra para abrir a SQL · arraste para selecionar um intervalo</span>
+    </div>
+    <div class="chart" id="tl"></div>
+    <div class="legend" id="tlLegend"></div>
+  </section>
+
+  <div class="grid2">
+    <section class="card" aria-labelledby="hmTitle">
+      <div class="card-h">
+        <h2 id="hmTitle">Carga por dia e hora</h2>
+        <span class="heat-scale" id="hmScale"></span>
+      </div>
+      <div class="chart" id="hm"></div>
+    </section>
+
+    <section class="card" aria-labelledby="topTitle">
+      <div class="card-h">
+        <h2 id="topTitle">Top SQL</h2>
+        <label class="field" style="grid-auto-flow:column;align-items:center;gap:8px"><span>Filtrar texto</span><input type="search" id="fText" placeholder="ex.: pedidos"></label>
+      </div>
+      <div class="tbl-wrap"><table class="data" id="topTbl"></table></div>
+      <div class="more" id="topMore"></div>
+    </section>
+  </div>
+
+  <details class="card howto" id="howto">
+    <summary>Como coletar os dados</summary>
+    <div class="howto-body">
+      <p>O <span class="mono">pg_stat_activity</span> é uma foto instantânea. Para ver a carga ao longo do dia, colete fotos periódicas (por exemplo, a cada 15 s), como o ASH do Oracle faz. Cada sessão <b>ativa</b> numa amostra vale um intervalo de tempo de banco; somando, temos as sessões ativas médias e o custo de cada SQL.</p>
+      <h3>1. Coleta com psql (qualquer máquina com acesso ao banco)</h3>
+      <div class="codebox"><button class="btn small" type="button" data-copy="snipShell">Copiar</button><pre class="raw" id="snipShell">#!/usr/bin/env bash
+# Uso: INTERVALO=15 ./coleta_pg_activity.sh "host=db1 dbname=postgres user=monitor" saida.csv
+CONN="${1:?informe a string de conexao}"; OUT="${2:-pg_activity_$(date +%Y%m%d).csv}"; INTERVALO="${INTERVALO:-15}"
+SQL="SELECT now() AS sample_time, pid, leader_pid, datname, usename, application_name, client_addr,
+            backend_type, backend_start, xact_start, query_start, state_change, state,
+            wait_event_type, wait_event, query_id, query
+       FROM pg_stat_activity
+      WHERE pid &lt;&gt; pg_backend_pid() AND query &lt;&gt; ''
+        AND (state = 'active' OR state_change &gt;= now() - interval '${INTERVALO} seconds')"
+HDR=HEADER; [ -s "$OUT" ] &amp;&amp; HDR=""
+while true; do
+  psql "$CONN" -X -q -v ON_ERROR_STOP=1 -c "COPY ($SQL) TO STDOUT WITH (FORMAT csv $( [ -n "$HDR" ] &amp;&amp; echo ', HEADER'))" &gt;&gt; "$OUT" &amp;&amp; HDR=""
+  sleep "$INTERVALO"
+done</pre></div>
+      <p class="muted">PostgreSQL 13 ou anterior: remova <span class="mono">query_id</span> (14+) e <span class="mono">leader_pid</span> (13+). A versão completa, que detecta isso sozinha, está em <span class="mono">tools/pg-top-activity/coleta_pg_activity.sh</span>.</p>
+      <h3>2. Planos de execução (auto_explain)</h3>
+      <p>O <span class="mono">pg_stat_activity</span> não guarda planos. Ligue o <span class="mono">auto_explain</span> para registrar no log o plano de toda SQL lenta, e depois abra o log aqui em <b>Abrir planos…</b>. Os planos são associados às SQLs pelo <span class="mono">query_id</span> ou pelo texto normalizado.</p>
+      <div class="codebox"><button class="btn small" type="button" data-copy="snipAe">Copiar</button><pre class="raw" id="snipAe"># postgresql.conf (ou ALTER SYSTEM + pg_reload_conf())
+session_preload_libraries = 'auto_explain'
+auto_explain.log_min_duration = '2s'     # só SQLs acima disso
+auto_explain.log_analyze = on            # tempos reais por nó
+auto_explain.log_buffers = on
+auto_explain.log_timing = off            # reduz o overhead do analyze
+auto_explain.log_verbose = on            # inclui o Query Identifier (PG 14+)
+auto_explain.log_format = json</pre></div>
+      <p>Sem auto_explain, abra uma SQL no painel, gere o comando <span class="mono">EXPLAIN</span> na aba <b>Plano</b>, rode no banco e cole a saída ali mesmo.</p>
+      <h3>Formatos aceitos</h3>
+      <p>CSV (de <span class="mono">COPY</span>/<span class="mono">\copy</span>), TSV, JSON (array, <span class="mono">json_agg</span> ou uma linha por objeto), saída do psql em tabela ou em <span class="mono">\x</span>, e arquivos <span class="mono">.gz</span>. Só a coluna <span class="mono">query</span> é obrigatória; sem <span class="mono">sample_time</span>, o arquivo é tratado como uma foto única e o custo vira o tempo decorrido de cada execução. Tudo roda no seu navegador: nenhum dado sai da máquina.</p>
+    </div>
+  </details>
+</div>
+
+<aside id="drawer" hidden aria-labelledby="drTitle">
+  <div class="dr-h">
+    <span class="sw" id="drSw"></span>
+    <h3 id="drTitle"></h3>
+    <button class="btn small" type="button" id="drCopyId">Copiar ID</button>
+    <button class="btn small ghost" type="button" id="drClose" aria-label="Fechar detalhe">Fechar ✕</button>
+  </div>
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="resumo" aria-selected="true">Resumo</button>
+    <button type="button" role="tab" data-tab="plano" aria-selected="false">Plano de execução</button>
+    <button type="button" role="tab" data-tab="exec" aria-selected="false">Execuções</button>
+  </div>
+  <div class="dr-b" id="drBody"></div>
+</aside>
+
+<div id="tip" hidden></div>
+<div id="drop" hidden>Solte os arquivos de amostras ou de planos</div>
+
+<script>
+'use strict';
+/* =====================================================================
+   PG Top Activity — painel offline para amostras do pg_stat_activity.
+   Modelo:
+   - Com várias amostras (coluna sample_time): estilo ASH. Cada linha com
+     state='active' vale o intervalo entre amostras como "tempo de BD".
+     Sessões ativas médias (AAS) = tempo de BD / tempo de relógio.
+   - Com uma foto única: o custo é o tempo decorrido de cada execução
+     (query_start -> fim observado).
+   - Execuções observadas: dedup por (pid, backend_start, query_start).
+   ===================================================================== */
+
+// ---------- utilidades ----------
+const $ = (s, r = document) => r.querySelector(s);
+const SVGNS = 'http://www.w3.org/2000/svg';
+function h(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  if (props) for (const [k, v] of Object.entries(props)) {
+    if (v == null || v === false) continue;
+    if (k === 'class') e.className = v;
+    else if (k === 'text') e.textContent = v;
+    else if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) e.append(c instanceof Node ? c : String(c));
+  return e;
+}
+function sv(tag, attrs, parent) {
+  const e = document.createElementNS(SVGNS, tag);
+  if (attrs) for (const k in attrs) if (attrs[k] != null) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const nf0 = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
+const nf1 = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
+const nf2 = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+const p2 = n => String(n).padStart(2, '0');
+function fmtDur(ms) {
+  if (ms == null || !isFinite(ms)) return '–';
+  if (ms === 0) return '0';
+  if (ms < 10) return nf2.format(ms) + ' ms';
+  if (ms < 1000) return nf0.format(ms) + ' ms';
+  const s = ms / 1000;
+  if (s < 60) return nf1.format(s) + ' s';
+  const m = Math.floor(s / 60), ss = Math.floor(s % 60);
+  if (m < 60) return m + ' min ' + p2(ss) + ' s';
+  const hh = Math.floor(m / 60);
+  if (hh < 1000) return nf0.format(hh) + ' h ' + p2(m % 60) + ' min';
+  return nf1.format(hh / 24) + ' dias';
+}
+const fmtTick = v => new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(v);
+const fmtAas = v => v >= 100 ? nf0.format(v) : v >= 10 ? nf1.format(v) : nf2.format(v);
+const fmtPct = v => (v >= 0.0005 || v === 0 ? nf1.format(v * 100) : '<0,1') + '%';
+function fmtBytes(kb) { return kb >= 1048576 ? nf1.format(kb / 1048576) + ' GB' : kb >= 1024 ? nf1.format(kb / 1024) + ' MB' : nf0.format(kb) + ' kB'; }
+
+function fnv(str) {
+  let x = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { x ^= str.charCodeAt(i); x = Math.imul(x, 0x01000193); }
+  return (x >>> 0).toString(16).padStart(8, '0');
+}
+
+// ---------- datas ----------
+let tsInfo = { offset: null, naive: false };
+const TS_RE = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:[.,](\d+))?)?\s*(Z|UTC|GMT|[+-]\d{2}(?::?\d{2})?)?$/i;
+function parseTs(v) {
+  if (v == null) return null;
+  if (typeof v === 'number') return v > 1e12 ? v : v * 1000;
+  const s = String(v).trim();
+  if (!s) return null;
+  const m = TS_RE.exec(s);
+  if (!m) { const d = Date.parse(s); return isNaN(d) ? null : d; }
+  const ms = m[7] ? Number((m[7] + '00').slice(0, 3)) : 0;
+  let t = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0), ms);
+  if (m[8]) {
+    const z = m[8].toUpperCase();
+    let off = 0;
+    if (z !== 'Z' && z !== 'UTC' && z !== 'GMT') {
+      const sign = z[0] === '-' ? -1 : 1, d = z.slice(1).replace(':', '');
+      off = sign * (+d.slice(0, 2) * 60 + +(d.slice(2, 4) || 0));
+    }
+    t -= off * 60000;
+    if (tsInfo.offset == null) tsInfo.offset = off;
+  } else tsInfo.naive = true;
+  return t;
+}
+function parts(ms, off) {
+  const d = new Date(ms + off * 60000);
+  return { y: d.getUTCFullYear(), mo: d.getUTCMonth() + 1, d: d.getUTCDate(), h: d.getUTCHours(), mi: d.getUTCMinutes(), s: d.getUTCSeconds(), wd: d.getUTCDay() };
+}
+const WD = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+const tzOff = () => state.tzOff;
+function fmtDM(ms) { const p = parts(ms, tzOff()); return p2(p.d) + '/' + p2(p.mo); }
+function fmtHM(ms, sec) { const p = parts(ms, tzOff()); return p2(p.h) + ':' + p2(p.mi) + (sec ? ':' + p2(p.s) : ''); }
+function fmtDT(ms, sec) { const p = parts(ms, tzOff()); return p2(p.d) + '/' + p2(p.mo) + '/' + p.y + ' ' + p2(p.h) + ':' + p2(p.mi) + (sec ? ':' + p2(p.s) : ''); }
+function fmtRange(a, b) {
+  const pa = parts(a, tzOff()), pb = parts(b - 1, tzOff());
+  const same = pa.y === pb.y && pa.mo === pb.mo && pa.d === pb.d;
+  if (b - a >= 86400000 && pa.h === 0 && pa.mi === 0) return same ? WD[pa.wd] + ' ' + fmtDM(a) : fmtDM(a) + ' – ' + fmtDM(b - 1);
+  const sec = b - a < 60000 || pa.s !== 0;
+  return WD[pa.wd] + ' ' + fmtDM(a) + ' ' + fmtHM(a, sec) + '–' + (same ? '' : fmtDM(b) + ' ') + fmtHM(b, sec);
+}
+function offLabel(off) { const s = off < 0 ? '-' : '+', a = Math.abs(off); return 'UTC' + s + p2(Math.floor(a / 60)) + ':' + p2(a % 60); }
+const alignDown = (t, B, off) => Math.floor((t + off * 60000) / B) * B - off * 60000;
+
+// ---------- leitura de arquivos ----------
+async function readFileText(file) {
+  if (/\.gz$/i.test(file.name)) {
+    if (!('DecompressionStream' in window)) throw new Error('Este navegador não descompacta .gz; descompacte o arquivo antes.');
+    const ds = file.stream().pipeThrough(new DecompressionStream('gzip'));
+    return await new Response(ds).text();
+  }
+  return await file.text();
+}
+
+const FIELDS = {
+  sample_time: ['sample_time', 'snapshot_time', 'snap_time', 'sample_ts', 'sampled_at', 'collected_at', 'captured_at', 'coleta', 'data_coleta', 'dt_coleta', 'now', 'clock_timestamp', 'ts', 'timestamp'],
+  pid: ['pid', 'procpid'],
+  leader_pid: ['leader_pid'],
+  datname: ['datname', 'database', 'db', 'banco'],
+  usename: ['usename', 'username', 'user', 'usuario', 'rolname'],
+  application_name: ['application_name', 'application', 'app', 'aplicacao'],
+  client_addr: ['client_addr', 'client', 'client_hostname'],
+  backend_type: ['backend_type'],
+  backend_start: ['backend_start'],
+  xact_start: ['xact_start'],
+  query_start: ['query_start'],
+  state_change: ['state_change'],
+  state: ['state'],
+  wait_event_type: ['wait_event_type'],
+  wait_event: ['wait_event'],
+  query_id: ['query_id', 'queryid'],
+  query: ['query', 'sql', 'sql_text', 'query_text', 'current_query'],
+};
+function canonIndex(headers) {
+  const map = {};
+  headers.forEach((raw, i) => {
+    const k = String(raw).trim().replace(/^"+|"+$/g, '').toLowerCase();
+    for (const [canon, al] of Object.entries(FIELDS)) if (!(canon in map) && al.includes(k)) map[canon] = i;
+  });
+  return map;
+}
+function arraysToRecs(rows) {
+  if (!rows.length) return [];
+  const map = canonIndex(rows[0]);
+  if (!('query' in map)) throw new Error('Não encontrei a coluna "query" no cabeçalho. Colunas lidas: ' + rows[0].slice(0, 12).join(', '));
+  const keys = Object.keys(map), out = new Array(rows.length - 1);
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r], o = {};
+    for (const k of keys) { const v = row[map[k]]; o[k] = v === '' || v === undefined ? null : v; }
+    out[r - 1] = o;
+  }
+  return out;
+}
+
+function detectDelimiter(firstLine) {
+  const counts = { '\t': 0, ';': 0, ',': 0, '|': 0 };
+  let q = false;
+  for (const c of firstLine) { if (c === '"') q = !q; else if (!q && c in counts) counts[c]++; }
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+}
+function parseDelimited(text, d) {
+  const rows = []; let row = []; let i = 0; const n = text.length; const dc = d.charCodeAt(0);
+  while (i < n) {
+    let field;
+    if (text.charCodeAt(i) === 34) {
+      let j = i + 1, buf = '';
+      for (;;) {
+        const k = text.indexOf('"', j);
+        if (k < 0) { buf += text.slice(j); i = n; break; }
+        buf += text.slice(j, k);
+        if (text.charCodeAt(k + 1) === 34) { buf += '"'; j = k + 2; } else { i = k + 1; break; }
+      }
+      field = buf;
+      while (i < n) { const c = text.charCodeAt(i); if (c === dc || c === 10 || c === 13) break; field += text[i]; i++; }
+    } else {
+      let j = i;
+      while (j < n) { const c = text.charCodeAt(j); if (c === dc || c === 10 || c === 13) break; j++; }
+      field = text.slice(i, j); i = j;
+    }
+    row.push(field);
+    if (i >= n) { rows.push(row); break; }
+    const c = text.charCodeAt(i);
+    if (c === dc) { i++; if (i >= n) { row.push(''); rows.push(row); } continue; }
+    if (c === 13) i++;
+    if (text.charCodeAt(i) === 10) i++;
+    rows.push(row); row = [];
+  }
+  return rows.filter(r => !(r.length === 1 && r[0] === ''));
+}
+function quoteBigIds(text) { return text.replace(/("(?:query_id|queryid|Query Identifier)"\s*:\s*)(-?\d{15,})/g, '$1"$2"'); }
+function parseJsonRows(text) {
+  text = quoteBigIds(text);
+  let data;
+  try { data = JSON.parse(text); }
+  catch (e) { data = text.split(/\r?\n/).filter(l => l.trim().startsWith('{')).map(l => JSON.parse(l)); }
+  if (!Array.isArray(data)) {
+    const arr = Object.values(data).find(v => Array.isArray(v));
+    data = arr || [data];
+  }
+  if (!data.length) return [];
+  const headers = [...new Set(data.flatMap(o => Object.keys(o)))];
+  return arraysToRecs([headers, ...data.map(o => headers.map(k => o[k] == null ? '' : typeof o[k] === 'object' ? JSON.stringify(o[k]) : String(o[k])))]);
+}
+function parsePsqlAligned(lines, h) {
+  const sep = lines[h + 1];
+  const cuts = [];
+  for (let i = 0; i < sep.length; i++) if (sep[i] === '+' || sep[i] === '┼') cuts.push(i);
+  const ranges = []; let s = 0;
+  for (const c of cuts) { ranges.push([s, c]); s = c + 1; }
+  ranges.push([s, Infinity]);
+  const header = ranges.map(r => lines[h].slice(r[0], r[1]).trim());
+  const rows = [header];
+  let cur = null;
+  for (let li = h + 2; li < lines.length; li++) {
+    const line = lines[li];
+    if (/^\(\d+ rows?\)\s*$/.test(line.trim())) break;
+    if (!line.trim()) { if (cur) { rows.push(cur); cur = null; } continue; }
+    const cells = ranges.map((r, ci) => {
+      let raw = line.slice(r[0], r[1]);
+      if (ci < ranges.length - 1) raw = raw.replace(/\s*[|│]?$/, '');
+      return raw;
+    });
+    const cont = cells.map(c => /\s\+\s*$|^\+$/.test(c));
+    const clean = cells.map((c, ci) => (cont[ci] ? c.replace(/\s?\+\s*$/, '') : c).replace(/^ /, '').replace(/\s+$/, ''));
+    if (cur && cur._cont) {
+      for (let ci = 0; ci < clean.length; ci++) if (cur._cont[ci]) cur[ci] += '\n' + clean[ci];
+      cur._cont = cur._cont.map((was, ci) => was && cont[ci]);
+    } else {
+      if (cur) rows.push(cur);
+      cur = clean.slice(); cur._cont = cont;
+    }
+    if (!cur._cont.some(Boolean)) { rows.push(cur); cur = null; }
+  }
+  if (cur) rows.push(cur);
+  return arraysToRecs(rows);
+}
+function parsePsqlExpanded(lines) {
+  const recs = []; let cur = null, lastKey = null;
+  for (const line of lines) {
+    if (/^-\[ RECORD \d+ \]/.test(line)) { if (cur) recs.push(cur); cur = {}; lastKey = null; continue; }
+    if (!cur) continue;
+    const m = /^(\S[^|]*?)\s*\|\s?(.*)$/.exec(line);
+    if (m) { lastKey = m[1].trim(); cur[lastKey] = m[2].replace(/\s+\+$/, ''); continue; }
+    const c = /^\s+\|\s?(.*)$/.exec(line);
+    if (c && lastKey) cur[lastKey] += '\n' + c[1].replace(/\s+\+$/, '');
+  }
+  if (cur) recs.push(cur);
+  const headers = [...new Set(recs.flatMap(o => Object.keys(o)))];
+  return arraysToRecs([headers, ...recs.map(o => headers.map(k => o[k] ?? ''))]);
+}
+function parseActivity(text) {
+  text = text.replace(/^\uFEFF/, '');
+  const t = text.trimStart();
+  if (t[0] === '[' || t[0] === '{') return parseJsonRows(t);
+  const lines = text.split(/\r?\n/);
+  if (lines.some(l => /^-\[ RECORD \d+ \]/.test(l))) return parsePsqlExpanded(lines);
+  for (let i = 0; i < Math.min(lines.length - 1, 5); i++) {
+    if (/^[\s-]*-{3,}[-+]*$/.test(lines[i + 1]) && lines[i + 1].includes('+') && lines[i].includes('|')) return parsePsqlAligned(lines, i);
+    if (/^[─┼\s]+$/.test(lines[i + 1]) && lines[i + 1].includes('┼')) return parsePsqlAligned(lines, i);
+  }
+  const first = lines.find(l => l.trim()) || '';
+  return arraysToRecs(parseDelimited(text, detectDelimiter(first)));
+}
+
+// ---------- normalização de SQL ----------
+const normCache = new Map();
+function normalizeSql(q) {
+  let c = normCache.get(q);
+  if (c) return c;
+  let s = q.replace(/'(?:[^']|'')*'/g, '?')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ')
+    .replace(/\$\d+/g, '?')
+    .replace(/(^|[^\w$.])-?\d+(?:\.\d+)?(?:e[+-]?\d+)?\b/gi, '$1?')
+    .replace(/\s+/g, ' ').trim().toLowerCase()
+    .replace(/\(\s*\?(?:\s*,\s*\?)+\s*\)/g, '(?)')
+    .replace(/\s*;\s*$/, '');
+  c = { norm: s, fp: fnv(s) };
+  if (normCache.size < 200000) normCache.set(q, c);
+  return c;
+}
+function utf8Len(s) { let n = 0; for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); n += c < 0x80 ? 1 : c < 0x800 ? 2 : (c >= 0xd800 && c < 0xdc00) ? (i++, 4) : 3; } return n; }
+function looksTruncated(s) { const b = utf8Len(s); if (b < 1000) return false; for (let p = 1024; p <= 1048576; p *= 2) if (b >= p - 5 && b <= p - 1) return true; return false; }
+
+// ---------- modelo ----------
+const WAIT_CLASSES = ['CPU', 'IO', 'Lock', 'LWLock', 'IPC', 'Client', 'Timeout'];
+function waitSlot(cls) { const i = WAIT_CLASSES.indexOf(cls); return i < 0 ? 7 : i; }
+const WAIT_LABEL = c => c === 'CPU' ? 'CPU*' : c;
+
+function buildModel(recs) {
+  tsInfo = { offset: null, naive: false };
+  const sqls = [], sqlMap = new Map(), execMap = new Map(), samplesRaw = [], snapSet = new Set();
+  const dims = { db: new Map(), user: new Map(), app: new Map(), bt: new Map() };
+  const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+  const hasST = recs.some(r => r.sample_time);
+  const hasState = recs.some(r => r.state);
+  let fallbackT = null;
+  if (!hasST) {
+    let mx = -Infinity;
+    for (const r of recs) for (const k of ['query_start', 'state_change', 'xact_start', 'backend_start']) { const t = parseTs(r[k]); if (t != null && t > mx) mx = t; }
+    fallbackT = isFinite(mx) ? mx : Date.now();
+  }
+  function getSql(text, qidRaw) {
+    let qid = qidRaw == null ? null : String(qidRaw).trim();
+    if (qid === '' || qid === '0') qid = null;
+    const { norm, fp } = normalizeSql(text);
+    const key = qid ? 'q' + qid : 'f' + fp;
+    let i = sqlMap.get(key);
+    if (i == null) {
+      i = sqls.length;
+      sqls.push({ idx: i, id: qid ? fnv('qid:' + qid) : fp, qid, text, norm, fps: new Set([fp]), norms: new Set([norm]), mon: /\bpg_stat_activity\b/i.test(text), total: 0, slot: 0 });
+      sqlMap.set(key, i);
+    } else {
+      const s = sqls[i];
+      if (!s.fps.has(fp)) { s.fps.add(fp); if (s.norms.size < 50) s.norms.add(norm); }
+      if (text.length > s.text.length) s.text = text;
+    }
+    return i;
+  }
+  let skipped = 0;
+  for (const r of recs) {
+    const q = r.query;
+    if (q == null || !String(q).trim()) { skipped++; continue; }
+    const t = hasST ? parseTs(r.sample_time) : fallbackT;
+    if (t == null) { skipped++; continue; }
+    snapSet.add(t);
+    const st = (r.state || '').trim().toLowerCase();
+    const active = st === 'active' || (!hasState && st === '');
+    const sql = getSql(String(q), r.query_id);
+    const db = r.datname || '', user = r.usename || '', app = r.application_name || '', bt = r.backend_type || '';
+    bump(dims.db, db); bump(dims.user, user); bump(dims.app, app); bump(dims.bt, bt);
+    const pid = r.pid || '';
+    const parallel = !!(r.leader_pid && r.leader_pid !== pid);
+    if (active) {
+      const cls = r.wait_event_type || 'CPU';
+      samplesRaw.push({ t, sql, cls, ev: r.wait_event || (cls === 'CPU' ? 'sem evento' : ''), db, user, app, bt, pid, parallel });
+    }
+    const qs = parseTs(r.query_start);
+    if (qs != null && !parallel) {
+      const key = pid + '|' + (r.backend_start || '') + '|' + r.query_start;
+      const sc = parseTs(r.state_change);
+      const end = active ? t : (sc != null ? sc : qs);
+      let e = execMap.get(key);
+      if (!e) {
+        e = { sql, a: qs, b: Math.max(qs, end), pid, db, user, app, bt, client: r.client_addr || '', state: st, seen: t, text: String(q) };
+        execMap.set(key, e);
+      } else {
+        if (end > e.b) e.b = end;
+        if (t >= e.seen) { e.seen = t; e.state = st; }
+      }
+    }
+  }
+  const snaps = [...snapSet].sort((a, b) => a - b);
+  const sampled = hasST && snaps.length >= 2;
+  let interval = 0;
+  const wmap = new Map();
+  if (sampled) {
+    const gaps = [];
+    for (let i = 1; i < snaps.length; i++) gaps.push(snaps[i] - snaps[i - 1]);
+    gaps.sort((a, b) => a - b);
+    interval = gaps[Math.floor(gaps.length / 2)] || 1000;
+    snaps.forEach((t, i) => wmap.set(t, i === 0 ? interval : Math.min(t - snaps[i - 1], 3 * interval)));
+  }
+  const execs = [...execMap.values()];
+  for (const e of execs) e.dur = e.b - e.a;
+  let items, minT, maxT;
+  if (sampled) {
+    items = samplesRaw;
+    for (const s of items) s.w = wmap.get(s.t);
+    minT = snaps[0]; maxT = snaps[snaps.length - 1];
+    for (const s of items) sqls[s.sql].total += s.w;
+  } else {
+    items = execs;
+    minT = Infinity; maxT = -Infinity;
+    for (const e of execs) { if (e.a < minT) minT = e.a; if (e.b > maxT) maxT = e.b; sqls[e.sql].total += e.dur; }
+    if (!isFinite(minT)) { minT = fallbackT - 3600000; maxT = fallbackT; }
+  }
+  const ranked = sqls.filter(s => !s.mon).sort((a, b) => b.total - a.total);
+  ranked.forEach((s, i) => { s.rank = i + 1; s.slot = i < 8 && s.total > 0 ? i + 1 : 0; });
+  for (const s of sqls) { s.truncated = looksTruncated(s.text); if (s.mon) { s.rank = 1e9; s.slot = 0; } }
+  const snapList = sampled ? snaps.map(t => ({ t, w: wmap.get(t) })) : [];
+  return {
+    sqls, execs, items, sampled, interval, snapList, minT, maxT, dims, skipped, rows: recs.length,
+    dataOffset: tsInfo.offset != null ? tsInfo.offset : 0, naive: tsInfo.offset == null,
+    hasQid: sqls.some(s => s.qid), snapshotT: fallbackT,
+  };
+}
+
+// ---------- estado ----------
+const state = {
+  model: null, demo: false, files: [], plans: [], planFiles: [], warnings: [],
+  filters: { db: '', user: '', app: '', bt: '', hideMon: true, text: '' },
+  gran: 'auto', tzOff: 0, tzMode: 'data', stack: 'sql', cpus: 0,
+  sel: null, sort: { key: 'time', dir: -1 }, showAll: false,
+  openSql: null, tab: 'resumo', view: null, planChoice: {},
+};
+const LS = {
+  get(k) { try { return localStorage.getItem('pgta:' + k); } catch (e) { return null; } },
+  set(k, v) { try { if (v == null) localStorage.removeItem('pgta:' + k); else localStorage.setItem('pgta:' + k, v); } catch (e) { /* sem storage */ } },
+};
+
+const EMPTY = '\u2205';
+const dimOk = (fv, xv) => !fv || (fv === EMPTY ? xv === '' : xv === fv);
+function passFilters(x) {
+  const f = state.filters, M = state.model;
+  if (!dimOk(f.db, x.db) || !dimOk(f.user, x.user) || !dimOk(f.app, x.app) || !dimOk(f.bt, x.bt)) return false;
+  if (f.hideMon && M.sqls[x.sql].mon) return false;
+  return true;
+}
+function bucketSize() {
+  if (state.gran !== 'auto') return +state.gran;
+  const M = state.model, span = Math.max(1, M.maxT - M.minT);
+  const opts = [10000, 30000, 60000, 300000, 900000, 1800000, 3600000, 7200000, 21600000, 86400000];
+  const minB = M.sampled ? M.interval : 0;
+  for (const B of opts) if (B >= minB && span / B <= 168) return B;
+  return 86400000;
+}
+function allocate(a, b, b0, B, cb) {
+  if (b <= a) return;
+  let i = Math.floor((a - b0) / B), t = a;
+  while (t < b) { const be = b0 + (i + 1) * B, e = Math.min(b, be); cb(i, e - t); t = e; i++; }
+}
+function overlap(a, b, s) { return Math.max(0, Math.min(b, s.b) - Math.max(a, s.a)); }
+
+function computeView() {
+  const M = state.model, off = tzOff();
+  const B = bucketSize();
+  const b0 = alignDown(M.minT, B, off);
+  const nB = Math.max(1, Math.floor((M.maxT - b0) / B) + 1);
+  const items = M.items.filter(passFilters);
+  const execs = M.sampled ? M.execs.filter(passFilters) : items;
+  const cover = new Float64Array(nB);
+  if (M.sampled) for (const s of M.snapList) { const i = Math.floor((s.t - b0) / B); if (i >= 0 && i < nB) cover[i] += s.w; }
+  else {
+    // foto única: cobertura = intervalo do bucket (limitado ao período observado)
+    for (let i = 0; i < nB; i++) { const a = b0 + i * B; cover[i] = Math.max(0, Math.min(a + B, M.maxT) - Math.max(a, M.minT)); }
+  }
+  // séries
+  let series;
+  if (state.stack === 'wait' && M.sampled) {
+    series = WAIT_CLASSES.map((c, i) => ({ key: c, label: WAIT_LABEL(c), color: 'var(--s' + (i + 1) + ')' }));
+    series.push({ key: 'outras', label: 'Outras esperas', color: 'var(--s0)' });
+  } else {
+    const top = M.sqls.filter(s => s.slot > 0).sort((a, b) => a.slot - b.slot);
+    series = top.map(s => ({ key: s.idx, sql: s, label: s.id, color: 'var(--s' + s.slot + ')' }));
+    series.push({ key: 'outras', label: 'Outras SQLs', color: 'var(--s0)' });
+  }
+  const nS = series.length, otherIdx = nS - 1;
+  const sIndex = new Map(series.map((s, i) => [s.key, i]));
+  const seriesOf = state.stack === 'wait' && M.sampled
+    ? x => waitSlot(x.cls)
+    : x => { const i = sIndex.get(x.sql); return i == null ? otherIdx : i; };
+  const vals = Array.from({ length: nB }, () => new Float64Array(nS));
+  if (M.sampled) {
+    for (const s of items) { const i = Math.floor((s.t - b0) / B); if (i >= 0 && i < nB) vals[i][seriesOf(s)] += s.w; }
+  } else {
+    for (const e of items) { const si = seriesOf(e); allocate(e.a, e.b, b0, B, (i, ms) => { if (i >= 0 && i < nB) vals[i][si] += ms; }); }
+  }
+  // agregados por SQL (seleção ou tudo)
+  const sel = state.sel;
+  const per = new Map();
+  const getP = i => { let p = per.get(i); if (!p) { p = { sql: M.sqls[i], time: 0, waits: new Map(), n: 0, sumDur: 0, maxDur: 0, dbs: new Map(), users: new Map() }; per.set(i, p); } return p; };
+  let totalTime = 0;
+  if (M.sampled) {
+    for (const s of items) {
+      if (sel && (s.t < sel.a || s.t >= sel.b)) continue;
+      const p = getP(s.sql); p.time += s.w; totalTime += s.w;
+      p.waits.set(s.cls, (p.waits.get(s.cls) || 0) + s.w);
+    }
+  } else {
+    for (const e of items) {
+      const tm = sel ? overlap(e.a, e.b, sel) : e.dur;
+      if (sel && tm <= 0 && !(e.a >= sel.a && e.a < sel.b)) continue;
+      const p = getP(e.sql); p.time += tm; totalTime += tm;
+    }
+  }
+  for (const e of execs) {
+    if (sel && !(overlap(e.a, e.b, sel) > 0 || (e.a >= sel.a && e.a < sel.b))) continue;
+    const p = getP(e.sql); p.n++; p.sumDur += e.dur; if (e.dur > p.maxDur) p.maxDur = e.dur;
+    p.dbs.set(e.db, (p.dbs.get(e.db) || 0) + 1); p.users.set(e.user, (p.users.get(e.user) || 0) + 1);
+  }
+  // pico e média
+  let peak = 0, peakAt = null, coverSum = 0, timeSum = 0;
+  for (let i = 0; i < nB; i++) {
+    if (cover[i] <= 0) continue;
+    const a = b0 + i * B;
+    if (sel && (a < sel.a || a >= sel.b)) continue;
+    const v = vals[i].reduce((x, y) => x + y, 0);
+    coverSum += cover[i]; timeSum += v;
+    const aas = v / cover[i];
+    if (aas > peak) { peak = aas; peakAt = a; }
+  }
+  return { B, b0, nB, cover, series, vals, per, totalTime, peak, peakAt, avgAas: coverSum ? timeSum / coverSum : 0, items, execs };
+}
+
+// ---------- tooltip ----------
+const tip = $('#tip');
+function showTip(ev, build) {
+  tip.textContent = '';
+  build(tip);
+  tip.hidden = false;
+  const r = tip.getBoundingClientRect();
+  let x = ev.clientX + 14, y = ev.clientY + 14;
+  if (x + r.width > innerWidth - 8) x = ev.clientX - r.width - 14;
+  if (y + r.height > innerHeight - 8) y = Math.max(8, ev.clientY - r.height - 14);
+  tip.style.left = Math.max(8, x) + 'px'; tip.style.top = y + 'px';
+}
+function hideTip() { tip.hidden = true; }
+
+// ---------- escalas ----------
+function niceStep(x) { const p = Math.pow(10, Math.floor(Math.log10(x))), f = x / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; }
+function niceMax(v, n = 4) { const st = niceStep(v / n); return { max: Math.ceil(v / st) * st || st, step: st }; }
+
+// ---------- linha do tempo ----------
+function sqlPreview(s, n = 90) { const t = s.text.replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; }
+
+function renderTimeline() {
+  const V = state.view, M = state.model, box = $('#tl');
+  box.textContent = '';
+  const W = Math.max(300, box.clientWidth), H = 250, m = { l: 46, r: 12, t: 12, b: 30 };
+  const pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const nB = V.nB, bw = pw / nB, gap = bw >= 8 ? 2 : bw >= 4 ? 1 : 0;
+  const aas = V.vals.map((row, i) => V.cover[i] > 0 ? Array.from(row, v => v / V.cover[i]) : null);
+  const tot = aas.map(r => r ? r.reduce((a, b) => a + b, 0) : 0);
+  const { max: ymax, step } = niceMax(Math.max(0.01, ...tot, state.cpus || 0));
+  const svg = sv('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Sessões ativas médias por intervalo de tempo; a tabela Top SQL traz os mesmos números.' }, box);
+  const y = v => m.t + ph - (v / ymax) * ph;
+  // grade
+  for (let v = 0; v <= ymax + 1e-9; v += step) {
+    sv('line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: v === 0 ? 'var(--axis)' : 'var(--grid)', 'stroke-width': 1, 'shape-rendering': 'crispEdges' }, svg);
+    sv('text', { x: m.l - 6, y: y(v) + 3.5, 'text-anchor': 'end' }, svg).textContent = fmtTick(v);
+  }
+  // fronteiras de dia
+  const off = tzOff();
+  if (V.B < 86400000) {
+    for (let i = 1; i < nB; i++) {
+      const t = V.b0 + i * V.B, p = parts(t, off);
+      if (p.h === 0 && p.mi === 0) sv('line', { x1: m.l + i * bw, x2: m.l + i * bw, y1: m.t, y2: m.t + ph, stroke: 'var(--axis)', 'stroke-width': 1, 'shape-rendering': 'crispEdges' }, svg);
+    }
+  }
+  // seleção
+  const sel = state.sel;
+  let si0 = -1, si1 = -1;
+  if (sel) {
+    si0 = Math.max(0, Math.floor((sel.a - V.b0) / V.B)); si1 = Math.min(nB - 1, Math.ceil((sel.b - V.b0) / V.B) - 1);
+    if (si1 >= si0) sv('rect', { x: m.l + si0 * bw, y: m.t, width: (si1 - si0 + 1) * bw, height: ph, fill: 'var(--sel)' }, svg);
+  }
+  // barras
+  const bars = sv('g', null, svg);
+  const segStroke = bw - gap >= 6;
+  for (let i = 0; i < nB; i++) {
+    const r = aas[i];
+    if (!r) continue;
+    const g = sv('g', { opacity: sel && (i < si0 || i > si1) ? 0.35 : 1 }, bars);
+    let yy = m.t + ph;
+    for (let s = 0; s < r.length; s++) {
+      const v = r[s]; if (v <= 0) continue;
+      const hh = (v / ymax) * ph;
+      sv('rect', { x: m.l + i * bw + gap / 2, y: yy - hh, width: Math.max(0.5, bw - gap), height: hh, fill: V.series[s].color, stroke: segStroke && hh > 3 ? 'var(--surface)' : null, 'stroke-width': segStroke && hh > 3 ? 1 : null }, g);
+      yy -= hh;
+    }
+  }
+  // linha de CPUs
+  if (state.cpus > 0) {
+    sv('line', { x1: m.l, x2: W - m.r, y1: y(state.cpus), y2: y(state.cpus), stroke: 'var(--crit)', 'stroke-width': 1.5 }, svg);
+    const tx = sv('text', { x: W - m.r - 4, y: y(state.cpus) - 5, 'text-anchor': 'end' }, svg);
+    tx.textContent = state.cpus + ' CPUs'; tx.style.fill = 'var(--crit)';
+  }
+  // eixo x
+  const minPx = 64;
+  const B = V.B;
+  const cand = B >= 86400000 ? [1, 2, 7, 14, 28] : [1, 2, 3, 4, 6, 12, 24, 48, 96, 144, 288, 576, 1440];
+  let stepB = cand.find(k => k * bw >= minPx) || cand[cand.length - 1];
+  for (let i = 0; i < nB; i++) {
+    const t = V.b0 + i * B, p = parts(t, off);
+    const idx = B >= 86400000 ? Math.round((t + off * 60000) / 86400000) : Math.round((t + off * 60000) / B);
+    if (idx % stepB !== 0) continue;
+    const x = m.l + i * bw;
+    const midnight = p.h === 0 && p.mi === 0;
+    const label = B >= 86400000 || (midnight && stepB * B >= 3600000) ? WD[p.wd] + ' ' + fmtDM(t) : fmtHM(t, B < 60000);
+    sv('line', { x1: x, x2: x, y1: m.t + ph, y2: m.t + ph + 4, stroke: 'var(--axis)' }, svg);
+    const tx = sv('text', { x, y: H - 10, 'text-anchor': i === 0 ? 'start' : 'middle' }, svg);
+    tx.textContent = label;
+    if (midnight) tx.style.fill = 'var(--ink-2)';
+  }
+  // camada de interação
+  const hov = sv('rect', { x: 0, y: m.t, width: Math.max(1, bw), height: ph, fill: 'var(--hover)', visibility: 'hidden', 'pointer-events': 'none' }, svg);
+  const brush = sv('rect', { x: 0, y: m.t, width: 0, height: ph, fill: 'var(--sel)', stroke: 'var(--accent)', 'stroke-width': 1, visibility: 'hidden', 'pointer-events': 'none' }, svg);
+  const ov = sv('rect', { x: m.l, y: m.t, width: pw, height: ph, fill: 'transparent', tabindex: 0, 'aria-label': 'Gráfico interativo: setas movem, Enter seleciona o intervalo' }, svg);
+  ov.style.cursor = 'crosshair'; ov.style.outline = 'none';
+  const idxAt = ev => { const r = svg.getBoundingClientRect(); return Math.max(0, Math.min(nB - 1, Math.floor((ev.clientX - r.left - m.l) / bw))); };
+  const segAt = (i, ev) => {
+    const r = aas[i]; if (!r) return -1;
+    const py = ev.clientY - svg.getBoundingClientRect().top;
+    let yy = m.t + ph;
+    for (let s = 0; s < r.length; s++) { const hh = (r[s] / ymax) * ph; if (r[s] > 0 && py <= yy && py >= yy - hh) return s; yy -= hh; }
+    return -1;
+  };
+  let drag = null, kb = -1;
+  const tipFor = (i, ev, cur) => showTip(ev, el => {
+    const a = V.b0 + i * B;
+    el.append(h('div', { class: 't-h', text: fmtRange(a, a + B) }));
+    const r = aas[i];
+    if (!r) { el.append(h('div', { text: 'Sem amostras neste intervalo' })); return; }
+    const total = r.reduce((x, y2) => x + y2, 0);
+    el.append(h('div', { class: 't-tot' }, h('b', { text: fmtAas(total) }), ' sessões ativas · ', fmtDur(V.vals[i].reduce((x, y2) => x + y2, 0)), ' de BD'));
+    const rows = r.map((v, s) => ({ v, s })).filter(o => o.v > 0).reverse();
+    for (const { v, s } of rows.slice(0, 10)) {
+      const S = V.series[s];
+      const name = S.sql ? S.sql.id + '  ' + sqlPreview(S.sql, 46) : S.label;
+      el.append(h('div', { class: 't-row' + (s === cur ? ' cur' : '') }, h('i', { class: 'k', style: { background: S.color } }), h('b', { text: fmtAas(v) }), h('span', { class: S.sql ? 'mono' : '', text: name })));
+    }
+    el.append(h('div', { class: 't-foot', text: state.stack === 'sql' ? 'Clique para abrir a SQL · arraste para selecionar' : 'Clique para selecionar este intervalo' }));
+  });
+  ov.addEventListener('pointerdown', ev => { if (ev.button !== 0) return; drag = { i: idxAt(ev), x: ev.clientX, moved: false }; ov.setPointerCapture(ev.pointerId); });
+  ov.addEventListener('pointermove', ev => {
+    const i = idxAt(ev);
+    hov.setAttribute('x', m.l + i * bw); hov.setAttribute('visibility', 'visible');
+    if (drag) {
+      if (Math.abs(ev.clientX - drag.x) > 5) drag.moved = true;
+      if (drag.moved) {
+        const lo = Math.min(drag.i, i), hi = Math.max(drag.i, i);
+        brush.setAttribute('x', m.l + lo * bw); brush.setAttribute('width', (hi - lo + 1) * bw); brush.setAttribute('visibility', 'visible');
+        hideTip(); return;
+      }
+    }
+    tipFor(i, ev, segAt(i, ev));
+  });
+  ov.addEventListener('pointerleave', () => { if (!drag) { hov.setAttribute('visibility', 'hidden'); hideTip(); } });
+  ov.addEventListener('pointerup', ev => {
+    if (!drag) return;
+    const i = idxAt(ev), d = drag; drag = null;
+    brush.setAttribute('visibility', 'hidden');
+    if (d.moved) {
+      const lo = Math.min(d.i, i), hi = Math.max(d.i, i);
+      setSel({ a: V.b0 + lo * B, b: V.b0 + (hi + 1) * B });
+    } else {
+      const s = segAt(i, ev);
+      const a = V.b0 + i * B;
+      const already = state.sel && state.sel.a === a && state.sel.b === a + B;
+      if (s >= 0 && V.series[s].sql) { setSel({ a, b: a + B }); openSql(V.series[s].sql.idx); }
+      else setSel(already ? null : { a, b: a + B });
+    }
+  });
+  ov.addEventListener('keydown', ev => {
+    if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') {
+      kb = Math.max(0, Math.min(nB - 1, (kb < 0 ? 0 : kb) + (ev.key === 'ArrowRight' ? 1 : -1)));
+      hov.setAttribute('x', m.l + kb * bw); hov.setAttribute('visibility', 'visible');
+      const r = svg.getBoundingClientRect();
+      tipFor(kb, { clientX: r.left + m.l + (kb + 0.5) * bw, clientY: r.top + m.t + 10 }, -1);
+      ev.preventDefault();
+    } else if (ev.key === 'Enter' && kb >= 0) { const a = V.b0 + kb * B; setSel({ a, b: a + B }); }
+    else if (ev.key === 'Escape') { setSel(null); }
+  });
+  ov.addEventListener('blur', () => { hov.setAttribute('visibility', 'hidden'); hideTip(); });
+
+  // título e legenda
+  $('#tlHint').textContent = state.stack === 'sql' ? 'Clique numa barra para abrir a SQL · arraste para selecionar um intervalo' : 'Clique numa barra ou arraste para selecionar um intervalo';
+  $('#tlTitle').textContent = (M.sampled ? 'Sessões ativas médias' : 'Sessões ativas (foto única, reconstruída)') + ' · ' + bucketLabel(B) + (state.stack === 'wait' ? ' · por classe de espera' : ' · por SQL');
+  const lg = $('#tlLegend'); lg.textContent = '';
+  const present = new Set();
+  V.vals.forEach(r => r.forEach((v, s) => { if (v > 0) present.add(s); }));
+  V.series.forEach((S, s) => {
+    if (!present.has(s)) return;
+    if (S.sql) {
+      lg.append(h('button', { type: 'button', class: 'lg', title: S.sql.text.slice(0, 400), onclick: () => openSql(S.sql.idx) },
+        h('i', { class: 'sw', style: { background: S.color } }), h('span', { class: 'id', text: S.sql.id }), h('span', { class: 'tx', text: sqlPreview(S.sql, 48) })));
+    } else {
+      lg.append(h('span', { class: 'lg static' }, h('i', { class: 'sw', style: { background: S.color } }), h('span', { class: 'tx', text: S.label })));
+    }
+  });
+  if (state.stack === 'wait') lg.append(h('span', { class: 'lg static muted', text: 'CPU* = sessão ativa sem evento de espera (em CPU ou espera não instrumentada)' }));
+}
+function bucketLabel(B) {
+  return B >= 86400000 ? 'por dia' : B >= 3600000 ? 'a cada ' + (B / 3600000) + ' h' : B >= 60000 ? 'a cada ' + (B / 60000) + ' min' : 'a cada ' + (B / 1000) + ' s';
+}
+
+// ---------- mapa de calor ----------
+function renderHeatmap() {
+  const V = state.view, M = state.model, box = $('#hm'); box.textContent = '';
+  const off = tzOff(), H1 = 3600000, D = 86400000;
+  const d0 = alignDown(M.minT, D, off), nD = Math.min(93, Math.floor((M.maxT - d0) / D) + 1);
+  const val = new Float64Array(nD * 24), cov = new Float64Array(nD * 24);
+  const cell = t => { const i = Math.floor((t - d0) / H1); return i >= 0 && i < nD * 24 ? i : -1; };
+  if (M.sampled) {
+    for (const s of M.snapList) { const i = cell(s.t); if (i >= 0) cov[i] += s.w; }
+    for (const s of V.items) { const i = cell(s.t); if (i >= 0) val[i] += s.w; }
+  } else {
+    for (let i = 0; i < nD * 24; i++) { const a = d0 + i * H1; cov[i] = Math.max(0, Math.min(a + H1, M.maxT) - Math.max(a, M.minT)); }
+    for (const e of V.items) allocate(e.a, e.b, d0, H1, (i, ms) => { if (i >= 0 && i < nD * 24) val[i] += ms; });
+  }
+  const aas = Array.from(val, (v, i) => cov[i] > 0 ? v / cov[i] : null);
+  const mx = Math.max(0.0001, ...aas.filter(v => v != null));
+  const bin = v => v == null ? -1 : v <= 0 ? 0 : Math.min(6, Math.max(1, Math.ceil((v / mx) * 6)));
+  const W = Math.max(300, box.clientWidth), lab = 78, top = 18;
+  const cw = (W - lab) / 24, ch = Math.max(14, Math.min(26, cw * 0.72));
+  const Ht = top + nD * ch + 4;
+  const svg = sv('svg', { width: W, height: Ht, viewBox: `0 0 ${W} ${Ht}`, role: 'img', 'aria-label': 'Mapa de calor de sessões ativas médias por dia e hora' }, box);
+  for (let hh = 0; hh < 24; hh++) {
+    if (cw < 18 && hh % 3) continue;
+    sv('text', { x: lab + hh * cw + cw / 2, y: 11, 'text-anchor': 'middle' }, svg).textContent = p2(hh) + 'h';
+  }
+  const sel = state.sel;
+  for (let d = 0; d < nD; d++) {
+    const dt = d0 + d * D, p = parts(dt, off);
+    const tx = sv('text', { x: lab - 8, y: top + d * ch + ch / 2 + 4, 'text-anchor': 'end' }, svg);
+    tx.textContent = WD[p.wd] + ' ' + fmtDM(dt);
+    for (let hh = 0; hh < 24; hh++) {
+      const i = d * 24 + hh, b = bin(aas[i]), a = d0 + i * H1;
+      const inSel = sel && a >= sel.a && a + H1 <= sel.b;
+      const r = sv('rect', { x: lab + hh * cw + 1, y: top + d * ch + 1, width: Math.max(1, cw - 2), height: ch - 2, rx: 2,
+        fill: b < 0 ? 'transparent' : 'var(--h' + b + ')', stroke: inSel ? 'var(--ink)' : b < 0 ? 'var(--grid)' : null, 'stroke-width': inSel ? 1.5 : 1 }, svg);
+      if (b < 0) continue;
+      r.style.cursor = 'pointer';
+      r.addEventListener('pointermove', ev => {
+        r.setAttribute('stroke', 'var(--ink)');
+        showTip(ev, el => {
+          el.append(h('div', { class: 't-h', text: fmtRange(a, a + H1) }));
+          el.append(h('div', { class: 't-tot' }, h('b', { text: fmtAas(aas[i]) }), ' sessões ativas médias'));
+          el.append(h('div', { class: 'ink2', text: fmtDur(val[i]) + ' de tempo de BD' }));
+          el.append(h('div', { class: 't-foot', text: 'Clique para selecionar esta hora' }));
+        });
+      });
+      r.addEventListener('pointerleave', () => { r.setAttribute('stroke', inSel ? 'var(--ink)' : 'none'); hideTip(); });
+      r.addEventListener('click', () => { const already = sel && sel.a === a && sel.b === a + H1; setSel(already ? null : { a, b: a + H1 }); });
+    }
+  }
+  const sc = $('#hmScale'); sc.textContent = '';
+  sc.append('0 ');
+  for (let b = 0; b <= 6; b++) sc.append(h('i', { style: { background: 'var(--h' + b + ')' } }));
+  sc.append(' ' + fmtAas(mx) + ' sessões');
+}
+
+// ---------- KPIs ----------
+function kpi(lbl, val, det) { return h('div', { class: 'kpi' }, h('div', { class: 'lbl', text: lbl }), h('div', { class: 'val num', text: val }), h('div', { class: 'det', text: det || '' })); }
+function renderKpis() {
+  const V = state.view, M = state.model, box = $('#kpis'); box.textContent = '';
+  const per = [...V.per.values()].filter(p => p.time > 0 || p.n > 0);
+  const execN = per.reduce((a, p) => a + p.n, 0);
+  const scope = state.sel ? 'na seleção' : 'no período';
+  box.append(
+    kpi('Tempo de BD', fmtDur(V.totalTime), scope + (M.sampled ? ' · estimado por amostragem' : ' · soma das execuções')),
+    kpi('Sessões ativas médias', fmtAas(V.avgAas), V.peakAt != null ? 'pico ' + fmtAas(V.peak) + ' em ' + fmtRange(V.peakAt, V.peakAt + V.B) : ''),
+    kpi('SQLs distintas', nf0.format(per.filter(p => p.time > 0).length), (M.hasQid ? 'agrupadas por query_id' : 'agrupadas por texto normalizado')),
+    kpi('Execuções observadas', nf0.format(execN), 'vistas em ao menos uma amostra'),
+    kpi(M.sampled ? 'Amostras' : 'Foto única', M.sampled ? nf0.format(M.snapList.length) : fmtDT(M.snapshotT, true),
+      M.sampled ? 'a cada ' + fmtDur(M.interval) + ' · ' + fmtDT(M.minT) + ' → ' + fmtDT(M.maxT) : 'sem coluna sample_time'),
+  );
+}
+
+// ---------- Top SQL ----------
+function topWait(p) { let best = null, bv = 0; for (const [k, v] of p.waits) if (v > bv) { bv = v; best = k; } return best; }
+function renderTable() {
+  const V = state.view, M = state.model, tbl = $('#topTbl'); tbl.textContent = '';
+  const q = state.filters.text.trim().toLowerCase();
+  let rows = [...V.per.values()].filter(p => p.time > 0 || p.n > 0);
+  if (q) rows = rows.filter(p => p.sql.text.toLowerCase().includes(q) || p.sql.id.includes(q) || (p.sql.qid || '').includes(q));
+  const key = state.sort.key, dir = state.sort.dir;
+  const getters = { time: p => p.time, n: p => p.n, avg: p => p.n ? p.sumDur / p.n : 0, max: p => p.maxDur };
+  rows.sort((a, b) => dir * (getters[key](a) - getters[key](b)) || b.time - a.time);
+  const cols = [
+    { k: null, t: '' }, { k: null, t: 'SQL ID' }, { k: 'time', t: 'Atividade', cls: '' }, { k: 'time', t: 'Tempo de BD', cls: 'r' },
+    { k: 'n', t: 'Execuções', cls: 'r' }, { k: 'avg', t: 'Média', cls: 'r' }, { k: 'max', t: 'Máx', cls: 'r' },
+    { k: null, t: M.sampled ? 'Esperas' : 'Estado' }, { k: null, t: 'Banco · usuário' }, { k: null, t: 'SQL' },
+  ];
+  const thead = h('thead', null, h('tr', null, cols.map((c, ci) => {
+    const sortable = c.k && ci !== 2;
+    const th = h('th', { class: (c.cls || '') + (sortable ? ' sortable' : ''), scope: 'col', 'aria-sort': sortable && key === c.k ? (dir < 0 ? 'descending' : 'ascending') : null }, c.t + (sortable && key === c.k ? (dir < 0 ? ' ↓' : ' ↑') : ''));
+    if (sortable) th.addEventListener('click', () => { state.sort = { key: c.k, dir: state.sort.key === c.k ? -state.sort.dir : -1 }; renderTable(); });
+    return th;
+  })));
+  tbl.append(thead);
+  const tb = h('tbody');
+  const lim = state.showAll ? rows.length : 25;
+  const maxT = rows.reduce((a, p) => Math.max(a, p.time), 0) || 1;
+  for (const p of rows.slice(0, lim)) {
+    const s = p.sql, color = s.slot ? 'var(--s' + s.slot + ')' : 'var(--s0)';
+    const share = V.totalTime ? p.time / V.totalTime : 0;
+    const wb = h('div', { class: 'waitbar', title: '' });
+    const wt = [...p.waits.entries()].sort((a, b) => waitSlot(a[0]) - waitSlot(b[0]));
+    const wsum = wt.reduce((a, x) => a + x[1], 0);
+    wb.title = wt.map(([c, v]) => WAIT_LABEL(c) + ' ' + fmtPct(v / wsum)).join(' · ');
+    for (const [c, v] of wt) wb.append(h('i', { style: { width: (v / wsum * 100) + '%', background: 'var(--s' + (waitSlot(c) + 1 > 7 ? 0 : waitSlot(c) + 1) + ')' } }));
+    const tw = topWait(p);
+    const dbu = [...p.dbs.keys()][0] ?? '', usr = [...p.users.keys()][0] ?? '';
+    const tr = h('tr', { class: 'click' + (state.openSql === s.idx ? ' on' : ''), tabindex: 0, 'aria-label': 'Abrir SQL ' + s.id },
+      h('td', null, h('i', { class: 'sw', style: { background: color, display: 'block' } })),
+      h('td', { class: 'mono' }, s.id, s.truncated ? h('span', { class: 'tag warn', style: { marginLeft: '6px' }, title: 'Texto truncado por track_activity_query_size', text: 'cortado' }) : null),
+      h('td', null, h('div', { class: 'pct' }, h('div', { class: 'bar' }, h('i', { style: { width: (p.time / maxT * 100) + '%', background: color } })), h('span', { class: 'num', text: fmtPct(share) }))),
+      h('td', { class: 'r', text: fmtDur(p.time) }),
+      h('td', { class: 'r', text: nf0.format(p.n) }),
+      h('td', { class: 'r', text: p.n ? fmtDur(p.sumDur / p.n) : '–' }),
+      h('td', { class: 'r', text: p.n ? fmtDur(p.maxDur) : '–' }),
+      h('td', null, M.sampled ? h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, wb, h('span', { class: 'ink2', style: { fontSize: '12px', whiteSpace: 'nowrap' }, text: tw ? WAIT_LABEL(tw) : '' })) : '–'),
+      h('td', { class: 'ink2', style: { whiteSpace: 'nowrap' }, text: [dbu, usr].filter(Boolean).join(' · ') + (p.dbs.size + p.users.size > 2 ? ' +' : '') }),
+      h('td', { class: 'sqltext', title: s.text.slice(0, 600), text: sqlPreview(s, 140) }),
+    );
+    tr.addEventListener('click', () => openSql(s.idx));
+    tr.addEventListener('keydown', ev => { if (ev.key === 'Enter') openSql(s.idx); });
+    tb.append(tr);
+  }
+  if (!rows.length) tb.append(h('tr', null, h('td', { colspan: cols.length, class: 'empty', text: q ? 'Nenhuma SQL contém esse texto.' : 'Nenhuma atividade no recorte atual.' })));
+  tbl.append(tb);
+  const more = $('#topMore'); more.textContent = '';
+  if (rows.length > 25) more.append(h('button', { class: 'btn small', type: 'button', onclick: () => { state.showAll = !state.showAll; renderTable(); } }, state.showAll ? 'Mostrar só as 25 primeiras' : 'Mostrar todas as ' + nf0.format(rows.length) + ' SQLs'));
+  $('#topTitle').textContent = 'Top SQL' + (state.sel ? ' · ' + fmtRange(state.sel.a, state.sel.b) : ' · período inteiro');
+}
+
+// ---------- seleção ----------
+function setSel(sel) {
+  state.sel = sel;
+  renderAll();
+}
+function renderSelChip() {
+  const box = $('#selChip'); box.textContent = '';
+  if (!state.sel) return;
+  box.append(h('span', { class: 'chip' }, 'Seleção: ' + fmtRange(state.sel.a, state.sel.b), h('button', { type: 'button', 'aria-label': 'Limpar seleção', onclick: () => setSel(null), text: '✕' })));
+}
+
+// ---------- SQL: realce e formatação ----------
+const KW = new Set(('select from where and or not in is null as on join left right full inner outer cross lateral group by order having limit offset fetch first next rows only union all intersect except distinct insert into values update set delete returning with recursive case when then else end exists between like ilike similar asc desc nulls last create table index alter drop begin commit rollback vacuum analyze explain interval any some true false using window partition over filter cast for share nowait skip locked materialized do conflict nothing copy to').split(' '));
+const TOK = /(--[^\n]*|\/\*[\s\S]*?\*\/)|('(?:[^']|'')*'?)|(\$\d+)|((?:^|(?<=[^\w$.]))\d+(?:\.\d+)?)|("(?:[^"]|"")*"?)|([A-Za-z_][A-Za-z0-9_$]*)|(\s+)|([\s\S])/g;
+function tokens(sql) {
+  const out = []; let m; TOK.lastIndex = 0;
+  while ((m = TOK.exec(sql))) {
+    const t = m[0];
+    const type = m[1] ? 'cm' : m[2] ? 'str' : m[3] ? 'prm' : m[4] ? 'nm' : m[5] ? 'id' : m[6] ? (KW.has(t.toLowerCase()) ? 'kw' : 'id') : m[7] ? 'ws' : 'p';
+    out.push({ t, type });
+  }
+  return out;
+}
+const BREAK = new Set(['from', 'where', 'group', 'order', 'having', 'limit', 'offset', 'union', 'intersect', 'except', 'left', 'right', 'inner', 'full', 'cross', 'join', 'values', 'set', 'returning', 'and', 'or', 'window', 'on']);
+function formatSql(sql) {
+  if (sql.includes('\n') || sql.length < 90) return sql;
+  const tk = tokens(sql); let out = '', depth = 0, prevWord = '';
+  for (const k of tk) {
+    if (k.type === 'p') { if (k.t === '(') depth++; else if (k.t === ')') depth = Math.max(0, depth - 1); }
+    if (k.type === 'ws') { out += ' '; continue; }
+    const lw = k.t.toLowerCase();
+    if (k.type === 'kw' && depth === 0 && BREAK.has(lw) && !(lw === 'join' && ['left', 'right', 'inner', 'full', 'cross', 'outer', 'lateral'].includes(prevWord)) && !(lw === 'and' && prevWord === 'between_')) {
+      out = out.replace(/ +$/, '') + '\n' + (lw === 'and' || lw === 'or' ? '   ' : lw === 'on' ? '    ' : '') + k.t;
+    } else out += k.t;
+    if (k.type === 'kw' || k.type === 'id') prevWord = lw === 'between' ? 'between_' : lw;
+  }
+  return out.trim();
+}
+function sqlPre(sql) {
+  const pre = h('pre', { class: 'sql' });
+  for (const k of tokens(formatSql(sql))) {
+    if (k.type === 'kw' || k.type === 'str' || k.type === 'nm' || k.type === 'cm' || k.type === 'prm') pre.append(h('span', { class: k.type, text: k.t }));
+    else pre.append(k.t);
+  }
+  return pre;
+}
+function copyText(text, btn) {
+  const done = ok => { if (!btn) return; const o = btn.textContent; btn.textContent = ok ? 'Copiado' : 'Selecione e copie'; setTimeout(() => { btn.textContent = o; }, 1400); };
+  const fallback = () => {
+    const ta = h('textarea', { style: { position: 'fixed', opacity: '0', top: '0' } }); ta.value = text; document.body.append(ta); ta.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; } ta.remove(); done(ok);
+  };
+  try { navigator.clipboard.writeText(text).then(() => done(true), fallback); } catch (e) { fallback(); }
+}
+
+// ---------- planos ----------
+const NODE_RE = /^(.*?)\s+\(cost=([\d.]+)\.\.([\d.]+) rows=([\d.]+) width=(\d+)\)/;
+const ACT_RE = /\(actual(?: time=([\d.]+)\.\.([\d.]+))? rows=([\d.]+) loops=(\d+)\)/;
+function cleanPsql(text) {
+  return text.split(/\r?\n/)
+    .filter(l => !/^\s*QUERY PLAN\s*$/.test(l) && !/^\s*-{4,}\s*$/.test(l) && !/^\s*\(\d+ rows?\)\s*$/.test(l))
+    .map(l => l.replace(/\s+\+$/, '')).join('\n');
+}
+function isNodeLine(l) { return /^\s*->/.test(l) || /\((?:cost=|actual time=|actual rows=)/.test(l); }
+function parseNodeText(txt) {
+  const n = { label: txt, details: [], children: [] };
+  const m = NODE_RE.exec(txt);
+  if (m) { n.label = m[1].trim(); n.startCost = +m[2]; n.totalCost = +m[3]; n.planRows = +m[4]; n.width = +m[5]; }
+  else n.label = txt.replace(/\s+\((?:actual|never).*$/, '').trim();
+  const a = ACT_RE.exec(txt);
+  if (a) { if (a[1] != null) { n.aStart = +a[1]; n.aTotal = +a[2]; } n.aRows = +a[3]; n.loops = +a[4]; }
+  if (/\(never executed\)/.test(txt)) { n.never = true; n.loops = 0; }
+  return n;
+}
+function planFromText(text) {
+  let lines = cleanPsql(text).split('\n').map(l => l.replace(/\s+$/, '')).filter(l => l.trim());
+  if (!lines.length) return null;
+  let queryText = null, qid = null, planning = null, execution = null;
+  if (/^\s*Query Text:/.test(lines[0])) {
+    const q = [lines[0].replace(/^\s*Query Text:\s?/, '')]; let i = 1;
+    while (i < lines.length && !isNodeLine(lines[i])) { q.push(lines[i]); i++; }
+    queryText = q.join('\n').trim(); lines = lines.slice(i);
+  }
+  let root = null; const stack = [], extras = [];
+  let pendingSub = null;
+  for (const line of lines) {
+    const t = line.trim();
+    const arrowNode = /^\s*->/.test(line);
+    if (arrowNode || (!root && !/^(Planning|Execution|JIT|Query Identifier|Settings|Trigger|Serialization)\b/.test(t))) {
+      const col = arrowNode ? line.indexOf('->') : line.length - line.trimStart().length;
+      const node = parseNodeText(arrowNode ? line.slice(line.indexOf('->') + 2).trim() : t);
+      while (stack.length && stack[stack.length - 1].col >= col) stack.pop();
+      if (stack.length) {
+        const par = stack[stack.length - 1].node;
+        if (pendingSub && pendingSub.parent === par) { node.sub = pendingSub.label; pendingSub = null; }
+        par.children.push(node);
+      } else if (!root) root = node;
+      else continue;
+      stack.push({ col, node });
+      continue;
+    }
+    const col = line.length - line.trimStart().length;
+    let mm;
+    if ((mm = /^Query Identifier:\s*(-?\d+)/.exec(t))) qid = mm[1];
+    if ((mm = /^Planning Time:\s*([\d.]+)/.exec(t))) planning = +mm[1];
+    if ((mm = /^Execution Time:\s*([\d.]+)/.exec(t))) execution = +mm[1];
+    while (stack.length && stack[stack.length - 1].col >= col) stack.pop();
+    if (stack.length) {
+      const par = stack[stack.length - 1].node;
+      if (/^(InitPlan|SubPlan|CTE)\b/.test(t)) pendingSub = { parent: par, label: t };
+      else par.details.push(t);
+    } else extras.push(t);
+  }
+  if (!root) return null;
+  return { root, queryText, qid, planning, execution, extras, format: 'text', raw: text.trim() };
+}
+const DETAIL_KEYS = ['Hash Cond', 'Merge Cond', 'Join Filter', 'Index Cond', 'Recheck Cond', 'Filter', 'Rows Removed by Filter', 'Rows Removed by Join Filter', 'Rows Removed by Index Recheck', 'Sort Key', 'Sort Method', 'Sort Space Used', 'Sort Space Type', 'Group Key', 'Presorted Key', 'Heap Fetches', 'Workers Planned', 'Workers Launched', 'Cache Key', 'Hits', 'Misses', 'Evictions', 'Peak Memory Usage', 'Batches', 'Disk Usage', 'Exact Heap Blocks', 'Lossy Heap Blocks', 'Conflict Resolution', 'Tuples Inserted', 'Conflicting Tuples'];
+function jsonLabel(n) {
+  let t = n['Node Type'];
+  if (t === 'Aggregate') t = { Hashed: 'HashAggregate', Sorted: 'GroupAggregate', Mixed: 'MixedAggregate' }[n.Strategy] || 'Aggregate';
+  if (t === 'ModifyTable') t = n.Operation || t;
+  if (n['Partial Mode'] && n['Partial Mode'] !== 'Simple') t = n['Partial Mode'] + ' ' + t;
+  if (n['Parallel Aware']) t = 'Parallel ' + t;
+  if (n['Join Type'] && /Join|Nested Loop/.test(t)) t = t === 'Nested Loop' ? (n['Join Type'] === 'Inner' ? t : t + ' ' + n['Join Type'] + ' Join') : t.replace(/Join$/, '') + (n['Join Type'] === 'Inner' ? 'Join' : n['Join Type'] + ' Join');
+  if (n['Scan Direction'] === 'Backward') t += ' Backward';
+  if (n['Index Name']) t += ' using ' + n['Index Name'];
+  if (n['Relation Name']) t += ' on ' + n['Relation Name'] + (n.Alias && n.Alias !== n['Relation Name'] ? ' ' + n.Alias : '');
+  else if (n['CTE Name']) t += ' on ' + n['CTE Name'];
+  else if (n['Function Name']) t += ' on ' + n['Function Name'];
+  return t.replace(/\s+/g, ' ');
+}
+function fromJsonNode(n) {
+  const node = {
+    label: jsonLabel(n), startCost: n['Startup Cost'], totalCost: n['Total Cost'], planRows: n['Plan Rows'], width: n['Plan Width'],
+    aStart: n['Actual Startup Time'], aTotal: n['Actual Total Time'], aRows: n['Actual Rows'], loops: n['Actual Loops'],
+    never: n['Actual Loops'] === 0, sub: n['Subplan Name'] || (n['Parent Relationship'] === 'InitPlan' ? 'InitPlan' : null), details: [],
+    children: (n.Plans || []).map(fromJsonNode),
+  };
+  for (const k of DETAIL_KEYS) if (n[k] != null) node.details.push(k + ': ' + (Array.isArray(n[k]) ? n[k].join(', ') : n[k]));
+  const bufs = [['Shared Hit Blocks', 'hit'], ['Shared Read Blocks', 'read'], ['Shared Dirtied Blocks', 'dirtied'], ['Shared Written Blocks', 'written']].filter(([k]) => n[k]).map(([k, l]) => l + '=' + n[k]);
+  if (bufs.length) node.details.push('Buffers: shared ' + bufs.join(' '));
+  const tmp = [['Temp Read Blocks', 'read'], ['Temp Written Blocks', 'written']].filter(([k]) => n[k]).map(([k, l]) => l + '=' + n[k]);
+  if (tmp.length) node.details.push('Buffers: temp ' + tmp.join(' '));
+  if (n['I/O Read Time']) node.details.push('I/O Timings: read=' + n['I/O Read Time']);
+  return node;
+}
+function planFromJson(j) {
+  return {
+    root: fromJsonNode(j.Plan), queryText: j['Query Text'] || null, qid: j['Query Identifier'] != null ? String(j['Query Identifier']) : null,
+    planning: j['Planning Time'] ?? null, execution: j['Execution Time'] ?? null, extras: [], format: 'json', raw: JSON.stringify(j, null, 2),
+  };
+}
+function collectJson(j, out) {
+  if (Array.isArray(j)) { j.forEach(x => collectJson(x, out)); return; }
+  if (j && typeof j === 'object') {
+    if (j.Plan) out.push(planFromJson(j));
+    else if (j['QUERY PLAN']) collectJson(j['QUERY PLAN'], out);
+  }
+}
+function tryJson(s) { try { return JSON.parse(quoteBigIds(s)); } catch (e) { return null; } }
+function matchBraces(s) {
+  let depth = 0, inStr = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) { if (c === '\\') i++; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true;
+    else if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) return s.slice(0, i + 1); }
+  }
+  return null;
+}
+const LOG_TS = /(\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d(?:[.,]\d+)?(?:\s*(?:[+-]\d\d(?::?\d\d)?|UTC|GMT|Z)\b)?)/;
+function scanLog(text, tsHint) {
+  const out = [], re = /duration: ([\d.]+) ms\s+plan:[ \t]*\r?\n?/g, marks = [];
+  let m;
+  while ((m = re.exec(text))) marks.push({ i: m.index, end: re.lastIndex, dur: +m[1] });
+  marks.forEach((mk, k) => {
+    const seg = text.slice(mk.end, k + 1 < marks.length ? marks[k + 1].i : text.length);
+    const ls = text.lastIndexOf('\n', mk.i) + 1, tsm = LOG_TS.exec(text.slice(ls, mk.i));
+    const save = tsInfo; tsInfo = { offset: null, naive: false };
+    const ts = parseTs(tsm ? tsm[1] : tsHint); tsInfo = save;
+    const st = seg.trimStart();
+    let p = null;
+    if (st[0] === '{') {
+      const js = matchBraces(st);
+      const o = js && (tryJson(js) || tryJson(js.replace(/""/g, '"')));
+      if (o && o.Plan) p = planFromJson(o);
+    } else {
+      const lines = seg.split(/\r?\n/), take = [];
+      const tabbed = /^\s/.test(lines[0] || '');
+      for (const l of lines) {
+        if (/^\d{4}-\d\d-\d\d[ T]\d/.test(l)) break;
+        if (tabbed && l && !/^\s/.test(l)) break;
+        if (!l.trim()) { if (take.length) break; continue; }
+        take.push(tabbed ? l.replace(/^\t/, '') : l);
+      }
+      p = planFromText(take.join('\n'));
+    }
+    if (p) { p.durationMs = mk.dur; p.ts = ts; out.push(p); }
+  });
+  return out;
+}
+function extractPlans(text) {
+  text = text.replace(/^\uFEFF/, '');
+  const out = [], tt = text.trim();
+  if (tt[0] === '[' || tt[0] === '{') {
+    const j = tryJson(tt);
+    if (j) { collectJson(j, out); if (out.length) return out; }
+    for (const line of tt.split(/\r?\n/)) {
+      const l = line.trim(); if (!l.startsWith('{')) continue;
+      const o = tryJson(l); if (!o) continue;
+      if (typeof o.message === 'string') out.push(...scanLog(o.message, o.timestamp));
+      else collectJson(o, out);
+    }
+    if (out.length) return out;
+  }
+  const cleaned = cleanPsql(tt).trim();
+  if (cleaned[0] === '[' || cleaned[0] === '{') { const j = tryJson(cleaned); if (j) { collectJson(j, out); if (out.length) return out; } }
+  const fromLog = scanLog(text);
+  if (fromLog.length) return fromLog;
+  const p = planFromText(text);
+  if (p) out.push(p);
+  return out;
+}
+function analyzePlan(plan) {
+  const hasTime = (function any(n) { return n.aTotal != null || n.children.some(any); })(plan.root);
+  plan.analyze = hasTime;
+  const walk = (n, div, underLimit) => {
+    const loops = n.never ? 0 : (n.loops == null ? 1 : n.loops);
+    n.incl = hasTime ? (n.aTotal || 0) * Math.max(loops / div, loops ? 1 : 0) : (n.totalCost || 0);
+    const wl = n.details.map(d => /^Workers Launched:\s*(\d+)/.exec(d)).find(Boolean);
+    const cdiv = wl ? +wl[1] + 1 : div;
+    n.children.forEach(c => walk(c, cdiv, underLimit || /^Limit\b/.test(n.label)));
+    n.excl = Math.max(0, n.incl - n.children.filter(c => !c.sub || !/^InitPlan|^CTE/.test(c.sub)).reduce((a, c) => a + c.incl, 0));
+    n.flags = [];
+    if (hasTime && n.aRows != null && n.planRows != null && !n.never) {
+      const r = Math.max(n.aRows, 1) / Math.max(n.planRows, 1);
+      if (r >= 10) n.flags.push({ t: 'estimativa ' + nf0.format(r) + '× abaixo', c: 'warn' });
+      else if (r <= 0.1 && !underLimit) n.flags.push({ t: 'estimativa ' + nf0.format(1 / r) + '× acima', c: 'warn' });
+    }
+    const rem = n.details.map(d => /^Rows Removed by Filter:\s*([\d.]+)/.exec(d)).find(Boolean);
+    if (rem) {
+      const removed = +rem[1] * Math.max(1, n.loops || 1), kept = (n.aRows || 0) * Math.max(1, n.loops || 1);
+      if (removed > 10000 && removed > 10 * kept) n.flags.push({ t: 'filtro descarta ' + nf0.format(removed) + ' linhas' + (/Seq Scan/.test(n.label) ? ' · avalie um índice' : ''), c: 'crit' });
+    }
+    if (n.details.some(d => /Sort Method: external|Sort Space Type: Disk/.test(d))) n.flags.push({ t: 'ordenação em disco', c: 'crit' });
+    if (n.details.some(d => /Batches: ([2-9]|\d{2,})/.test(d) || /Buffers: temp/.test(d))) n.flags.push({ t: 'usa arquivos temporários', c: 'warn' });
+  };
+  walk(plan.root, 1, false);
+  plan.total = Math.max(plan.root.incl, 1e-9);
+  let hot = plan.root;
+  (function f(n) { if (n.excl > hot.excl) hot = n; n.children.forEach(f); })(plan.root);
+  plan.hot = hot;
+  return plan;
+}
+
+let planSeq = 0;
+function addPlans(list, source) {
+  for (const p of list) {
+    p.id = ++planSeq; p.source = p.source || source;
+    if (p.queryText) { const c = normalizeSql(p.queryText); p.fp = c.fp; p.norm = c.norm; }
+    analyzePlan(p);
+    state.plans.push(p);
+  }
+}
+function plansForSql(s) {
+  const out = [];
+  for (const p of state.plans) {
+    if (p.sqlId && p.sqlId !== s.id) continue;
+    if (p.sqlId === s.id) { out.push(p); continue; }
+    if (s.qid && p.qid && p.qid === s.qid) { out.push(p); continue; }
+    if (p.fp && s.fps.has(p.fp)) { out.push(p); continue; }
+    if (p.norm && s.truncated) {
+      const head = s.norm.slice(0, Math.max(0, s.norm.lastIndexOf(' ')));
+      if (head.length > 200 && p.norm.startsWith(head)) out.push(p);
+    }
+  }
+  return out.sort((a, b) => (b.durationMs || b.execution || 0) - (a.durationMs || a.execution || 0));
+}
+function loadSavedPlans() {
+  state.plans = state.plans.filter(p => p.source !== 'colado');
+  if (!state.model) return;
+  for (const s of state.model.sqls) {
+    const raw = LS.get('plan:' + s.id);
+    if (!raw) continue;
+    const ps = extractPlans(raw);
+    if (ps.length) { ps.forEach(p => { p.sqlId = s.id; p.raw = raw; }); addPlans(ps.slice(0, 1), 'colado'); }
+  }
+}
+
+function renderPlan(plan) {
+  const box = h('div', { style: { display: 'grid', gap: '10px' } });
+  const total = plan.analyze ? (plan.execution || plan.total) : plan.total;
+  const sum = h('div', { class: 'plan-sum' });
+  if (plan.analyze) sum.append(h('span', null, 'Tempo de execução ', h('b', { text: fmtDur(total) })));
+  else sum.append(h('span', null, 'Custo estimado ', h('b', { text: nf0.format(plan.root.totalCost || 0) }), ' (sem ANALYZE)'));
+  if (plan.planning != null) sum.append(h('span', null, 'Planejamento ', h('b', { text: fmtDur(plan.planning) })));
+  if (plan.durationMs != null) sum.append(h('span', null, 'Duração no log ', h('b', { text: fmtDur(plan.durationMs) })));
+  if (plan.ts != null) sum.append(h('span', null, 'Em ', h('b', { text: fmtDT(plan.ts, true) })));
+  sum.append(h('span', null, 'Nó mais caro ', h('b', { text: plan.hot.label.split(' on ')[0] + ' (' + fmtPct(plan.hot.excl / plan.total) + ')' })));
+  box.append(sum);
+  if (plan.durationMs != null && plan.analyze && plan.durationMs > 5 * plan.total && plan.durationMs - plan.total > 1000) {
+    box.append(h('div', { class: 'callout', text: 'A duração no log (' + fmtDur(plan.durationMs) + ') é bem maior que o tempo somado dos nós (' + fmtDur(plan.total) + '). O tempo ficou fora da execução do plano: espera por lock, gatilhos ou envio de linhas ao cliente. Veja as esperas na aba Resumo.' }));
+  }
+  const tree = h('div', { class: 'ptree' });
+  const node = (n) => {
+    const pct = plan.total ? n.excl / plan.total : 0;
+    const wrap = h('div', { class: 'pn' + (n === plan.hot ? ' hot' : '') });
+    const nameParts = n.label.match(/^(.*?)( (?:using|on) .*)?$/);
+    const row = h('div', { class: 'pn-row', tabindex: 0, role: 'button', 'aria-expanded': 'true' },
+      h('div', { class: 'pn-bar' }, h('i', { style: { width: Math.max(pct * 100, n.excl > 0 ? 1 : 0) + '%' } })),
+      h('div', { class: 'pn-pct', text: fmtPct(pct) }),
+      h('div', { class: 'pn-label' },
+        n.children.length || n.details.length ? h('span', { class: 'pn-tw', text: '▾' }) : null,
+        n.sub ? h('span', { class: 'sub2', text: n.sub }) : null,
+        h('span', null, h('span', { class: 'nt', text: nameParts[1] }), h('span', { class: 'ink2', text: nameParts[2] || '' })),
+        n.flags.map(f => h('span', { class: 'tag ' + f.c, text: f.t }))));
+    const meta = [];
+    if (n.totalCost != null) meta.push('custo ' + nf1.format(n.startCost) + '..' + nf1.format(n.totalCost));
+    if (n.planRows != null) meta.push('linhas est. ' + nf0.format(n.planRows) + (n.aRows != null ? ' · reais ' + nf0.format(n.aRows) : ''));
+    else if (n.aRows != null) meta.push('linhas ' + nf0.format(n.aRows));
+    if (n.loops != null && n.loops !== 1) meta.push(n.never ? 'nunca executado' : 'loops ' + nf0.format(n.loops));
+    if (plan.analyze && n.aTotal != null) meta.push('tempo ' + fmtDur(n.incl) + ' (próprio ' + fmtDur(n.excl) + ')');
+    wrap.append(row, h('div', { class: 'pn-meta', text: meta.join(' · ') }));
+    if (n.details.length) wrap.append(h('ul', { class: 'pn-det' }, n.details.map(d => h('li', { text: d }))));
+    if (n.children.length) wrap.append(h('div', { class: 'pn-kids' }, n.children.map(node)));
+    const toggle = () => { const c = wrap.classList.toggle('collapsed'); row.setAttribute('aria-expanded', String(!c)); const tw = row.querySelector('.pn-tw'); if (tw) tw.textContent = c ? '▸' : '▾'; };
+    row.addEventListener('click', toggle);
+    row.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); } });
+    return wrap;
+  };
+  tree.append(node(plan.root));
+  box.append(tree);
+  if (plan.extras && plan.extras.length) box.append(h('div', { class: 'muted', style: { fontSize: '12px' }, text: plan.extras.join(' · ') }));
+  const rawD = h('details', null, h('summary', { style: { cursor: 'pointer', fontSize: '12.5px', color: 'var(--ink-2)' }, text: 'Ver plano bruto' }), h('pre', { class: 'raw', style: { marginTop: '8px' }, text: plan.raw || '' }));
+  box.append(rawD);
+  return box;
+}
+
+// ---------- gaveta de detalhe ----------
+function openSql(idx) {
+  state.openSql = idx;
+  const dr = $('#drawer');
+  dr.hidden = false;
+  renderDrawer();
+  renderTable();
+}
+function closeDrawer() { state.openSql = null; $('#drawer').hidden = true; renderTable(); }
+function sqlStats(s) {
+  const V = state.view, M = state.model;
+  const items = V.items.filter(x => x.sql === s.idx);
+  const execs = V.execs.filter(x => x.sql === s.idx);
+  let total = 0;
+  const waits = new Map(), events = new Map();
+  if (M.sampled) for (const x of items) { total += x.w; waits.set(x.cls, (waits.get(x.cls) || 0) + x.w); const k = x.cls + ': ' + x.ev; events.set(k, (events.get(k) || 0) + x.w); }
+  else for (const e of items) total += e.dur;
+  const durs = execs.map(e => e.dur).sort((a, b) => a - b);
+  const pct = q => durs.length ? durs[Math.min(durs.length - 1, Math.floor(q * durs.length))] : null;
+  return { items, execs, total, waits, events, n: durs.length, avg: durs.length ? durs.reduce((a, b) => a + b, 0) / durs.length : null, p95: pct(0.95), max: durs.length ? durs[durs.length - 1] : null };
+}
+function countBy(arr, f) { const m = new Map(); for (const x of arr) { const k = f(x) || '—'; m.set(k, (m.get(k) || 0) + 1); } return [...m.entries()].sort((a, b) => b[1] - a[1]); }
+function miniChart(s, st) {
+  const V = state.view, M = state.model, box = h('div', { class: 'chart' });
+  requestAnimationFrame(() => {
+    const W = Math.max(280, box.clientWidth), H = 96, m = { l: 40, r: 8, t: 6, b: 18 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
+    const vals = new Float64Array(V.nB);
+    if (M.sampled) for (const x of st.items) { const i = Math.floor((x.t - V.b0) / V.B); if (i >= 0 && i < V.nB) vals[i] += x.w; }
+    else for (const e of st.items) allocate(e.a, e.b, V.b0, V.B, (i, ms) => { if (i >= 0 && i < V.nB) vals[i] += ms; });
+    const aas = Array.from(vals, (v, i) => V.cover[i] > 0 ? v / V.cover[i] : 0);
+    const { max } = niceMax(Math.max(0.01, ...aas), 2);
+    const svg = sv('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Sessões ativas desta SQL ao longo do tempo' }, box);
+    const bw = pw / V.nB, gap = bw >= 6 ? 1 : 0;
+    sv('line', { x1: m.l, x2: W - m.r, y1: m.t + ph, y2: m.t + ph, stroke: 'var(--axis)' }, svg);
+    sv('line', { x1: m.l, x2: W - m.r, y1: m.t, y2: m.t, stroke: 'var(--grid)' }, svg);
+    sv('text', { x: m.l - 6, y: m.t + 4, 'text-anchor': 'end' }, svg).textContent = fmtTick(max);
+    sv('text', { x: m.l - 6, y: m.t + ph + 3, 'text-anchor': 'end' }, svg).textContent = '0';
+    if (state.sel) {
+      const a = Math.max(0, (state.sel.a - V.b0) / V.B), b = Math.min(V.nB, (state.sel.b - V.b0) / V.B);
+      sv('rect', { x: m.l + a * bw, y: m.t, width: Math.max(0, (b - a) * bw), height: ph, fill: 'var(--sel)' }, svg);
+    }
+    const color = s.slot ? 'var(--s' + s.slot + ')' : 'var(--s1)';
+    aas.forEach((v, i) => { if (v <= 0) return; const hh = Math.max(1, v / max * ph); sv('rect', { x: m.l + i * bw + gap / 2, y: m.t + ph - hh, width: Math.max(0.5, bw - gap), height: hh, fill: color }, svg); });
+    sv('text', { x: m.l, y: H - 3 }, svg).textContent = fmtDT(V.b0);
+    sv('text', { x: W - m.r, y: H - 3, 'text-anchor': 'end' }, svg).textContent = fmtDT(V.b0 + V.nB * V.B);
+    const ov = sv('rect', { x: m.l, y: m.t, width: pw, height: ph, fill: 'transparent' }, svg);
+    ov.addEventListener('pointermove', ev => {
+      const i = Math.max(0, Math.min(V.nB - 1, Math.floor((ev.clientX - svg.getBoundingClientRect().left - m.l) / bw))), a = V.b0 + i * V.B;
+      showTip(ev, el => { el.append(h('div', { class: 't-h', text: fmtRange(a, a + V.B) }), h('div', { class: 't-tot' }, h('b', { text: fmtAas(aas[i]) }), ' sessões ativas · ', fmtDur(vals[i]))); });
+    });
+    ov.addEventListener('pointerleave', hideTip);
+  });
+  return box;
+}
+function renderDrawer() {
+  const M = state.model, s = M.sqls[state.openSql];
+  if (!s) { closeDrawer(); return; }
+  const color = s.slot ? 'var(--s' + s.slot + ')' : 'var(--s0)';
+  $('#drSw').style.background = color;
+  const title = $('#drTitle'); title.textContent = '';
+  title.append('SQL ', h('span', { class: 'mono', text: s.id }), h('span', { class: 'muted', style: { fontWeight: 400 }, text: s.rank < 1e9 ? '  · #' + s.rank + ' no período' : '' }));
+  document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === state.tab)));
+  const plans = plansForSql(s);
+  document.querySelector('.tabs [data-tab="plano"]').textContent = 'Plano de execução' + (plans.length ? ' (' + plans.length + ')' : '');
+  const body = $('#drBody'); body.textContent = '';
+  const st = sqlStats(s);
+  if (state.tab === 'resumo') {
+    const V = state.view, p = V.per.get(s.idx);
+    const allTime = [...V.items].reduce((a, x) => a + (M.sampled ? x.w : x.dur), 0) || 1;
+    body.append(h('section', null,
+      h('div', { class: 'stats' },
+        statBox('Tempo de BD', fmtDur(st.total), fmtPct(st.total / allTime) + ' do total filtrado'),
+        statBox('Na seleção', state.sel ? fmtDur(p ? p.time : 0) : '—', state.sel ? fmtRange(state.sel.a, state.sel.b) : 'nenhum intervalo selecionado'),
+        statBox('Execuções observadas', nf0.format(st.n), M.sampled ? 'vistas nas amostras' : 'na foto'),
+        statBox('Duração média', fmtDur(st.avg), 'p95 ' + fmtDur(st.p95)),
+        statBox('Duração máxima', fmtDur(st.max), M.sampled ? 'precisão ≈ ' + fmtDur(M.interval) : ''),
+      )));
+    body.append(h('section', null, h('h4', { text: 'Atividade ao longo do tempo' }), miniChart(s, st)));
+    if (M.sampled && st.waits.size) {
+      const wsum = [...st.waits.values()].reduce((a, b) => a + b, 0);
+      const stack = h('div', { class: 'waitstack' });
+      [...st.waits.entries()].sort((a, b) => waitSlot(a[0]) - waitSlot(b[0])).forEach(([c, v]) => stack.append(h('i', { title: WAIT_LABEL(c) + ' ' + fmtPct(v / wsum), style: { width: (v / wsum * 100) + '%', background: 'var(--s' + (waitSlot(c) < 7 ? waitSlot(c) + 1 : 0) + ')' } })));
+      const rows = h('div', { class: 'waitrows' });
+      [...st.events.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).forEach(([k, v]) => {
+        const cls = k.split(':')[0];
+        rows.append(h('div', null, h('i', { class: 'sw', style: { background: 'var(--s' + (waitSlot(cls) < 7 ? waitSlot(cls) + 1 : 0) + ')' } }), h('span', { text: k.replace(/^CPU: sem evento$/, 'CPU* (sem evento de espera)') }), h('b', { class: 'num', text: fmtPct(v / wsum) }), h('span', { class: 'muted num', text: fmtDur(v) })));
+      });
+      body.append(h('section', null, h('h4', { text: 'Eventos de espera' }), stack, rows));
+      const lockShare = (st.waits.get('Lock') || 0) / wsum;
+      if (lockShare > 0.3) body.append(h('div', { class: 'callout', text: fmtPct(lockShare) + ' do tempo desta SQL foi esperando lock. O plano não é o problema: procure a sessão bloqueadora (transação aberta e parada, ou longa) no mesmo intervalo.' }));
+      let lo = Infinity, hi = -Infinity;
+      for (const x of st.items) if (x.cls === 'Lock') { if (x.t < lo) lo = x.t; if (x.t > hi) hi = x.t; }
+      const blockers = isFinite(lo) ? M.execs.filter(e => /^idle in transaction/.test(e.state) && e.a <= hi && e.seen >= lo).sort((a, b) => a.a - b.a).slice(0, 8) : [];
+      if (blockers.length) {
+        body.append(h('section', null, h('h4', { text: 'Possíveis bloqueadores: sessões "idle in transaction" durante as esperas' }),
+          h('div', { class: 'tbl-wrap', style: { margin: 0, padding: 0 } }, h('table', { class: 'data' },
+            h('thead', null, h('tr', null, ['PID', 'Usuário', 'Aplicação', 'Cliente', 'Parada desde', 'Vista até', 'Última SQL'].map(t => h('th', { text: t })))),
+            h('tbody', null, blockers.map(e => h('tr', null,
+              h('td', { class: 'mono', text: e.pid }), h('td', { text: e.user }), h('td', { text: e.app }), h('td', { class: 'mono', text: e.client }),
+              h('td', { class: 'num', style: { whiteSpace: 'nowrap' }, text: fmtDT(e.b, true) }), h('td', { class: 'num', style: { whiteSpace: 'nowrap' }, text: fmtDT(e.seen, true) }),
+              h('td', { class: 'sqltext', title: e.text.slice(0, 600), text: e.text.replace(/\s+/g, ' ').slice(0, 120) }))))))));
+      }
+    }
+    const allE = st.execs;
+    const orig = h('div', { class: 'origin' });
+    const block = (t, list) => h('div', null, h('div', { class: 'muted', style: { fontSize: '11px', textTransform: 'uppercase', letterSpacing: '.06em' }, text: t }),
+      h('ol', null, list.slice(0, 5).map(([k, v]) => h('li', null, h('span', { title: k, text: k }), h('span', { class: 'muted num', text: nf0.format(v) })))));
+    orig.append(block('Banco', countBy(allE, e => e.db)), block('Usuário', countBy(allE, e => e.user)), block('Aplicação', countBy(allE, e => e.app)), block('Cliente', countBy(allE, e => e.client)));
+    if (allE.length) body.append(h('section', null, h('h4', { text: 'Origem (execuções)' }), orig));
+    const copyBtn = h('button', { class: 'btn small', type: 'button', text: 'Copiar SQL' });
+    copyBtn.addEventListener('click', () => copyText(s.text, copyBtn));
+    const sec = h('section', null, h('h4', null, h('span', { text: 'Texto da SQL' }), copyBtn));
+    if (s.truncated) sec.append(h('div', { class: 'callout', text: 'O texto parece cortado pelo limite track_activity_query_size (' + utf8Len(s.text) + ' bytes). Aumente o parâmetro (exige reinício) para capturar a SQL inteira.' }));
+    sec.append(sqlPre(s.text));
+    const meta = [];
+    if (s.qid) meta.push('query_id ' + s.qid);
+    if (s.fps.size > 1) meta.push(nf0.format(s.fps.size) + ' variações de literais agrupadas');
+    meta.push('impressão digital ' + [...s.fps][0]);
+    sec.append(h('div', { class: 'muted mono', style: { fontSize: '11.5px' }, text: meta.join(' · ') }));
+    body.append(sec);
+  } else if (state.tab === 'plano') {
+    renderPlanTab(body, s, plans);
+  } else {
+    const execs = st.execs.slice().sort((a, b) => b.dur - a.dur);
+    const tbl = h('table', { class: 'data' },
+      h('thead', null, h('tr', null, ['Início', 'Duração', 'PID', 'Usuário', 'Aplicação', 'Cliente', 'Estado final'].map((t, i) => h('th', { class: i === 1 ? 'r' : '', text: t })))),
+      h('tbody', null, execs.slice(0, 300).map(e => h('tr', { class: state.sel && overlap(e.a, e.b, state.sel) > 0 ? 'on' : '' },
+        h('td', { class: 'num', style: { whiteSpace: 'nowrap' }, text: fmtDT(e.a, true) }),
+        h('td', { class: 'r', text: fmtDur(e.dur) }),
+        h('td', { class: 'mono', text: e.pid }),
+        h('td', { text: e.user }), h('td', { text: e.app }), h('td', { class: 'mono', text: e.client }),
+        h('td', null, h('span', { class: 'tag' + (e.state === 'active' ? ' warn' : ''), text: e.state || '—' }))))));
+    body.append(h('section', null,
+      h('h4', { text: execs.length > 300 ? 'As 300 execuções mais longas de ' + nf0.format(execs.length) : nf0.format(execs.length) + ' execuções observadas' }),
+      h('div', { class: 'muted', style: { fontSize: '12.5px' }, text: M.sampled ? 'Execuções curtas que começaram e terminaram entre duas amostras só aparecem se forem a última SQL da conexão. "active" no estado final indica que a execução ainda rodava na última amostra em que foi vista.' : 'Foto única: duração = do query_start até state_change (ou até o momento da foto, se ainda ativa).' }),
+      h('div', { class: 'tbl-wrap', style: { margin: 0, padding: 0 } }, tbl)));
+  }
+}
+function statBox(l, v, d) { return h('div', { class: 'stat' }, h('div', { class: 'lbl', text: l }), h('div', { class: 'val', text: v }), h('div', { class: 'det', text: d || '' })); }
+function explainCmd(s, o) {
+  const opts = [];
+  const hasParams = /\$\d/.test(s.text);
+  const generic = hasParams && !o.analyze;
+  if (o.analyze) opts.push('ANALYZE');
+  if (o.buffers) opts.push('BUFFERS');
+  if (o.verbose) opts.push('VERBOSE');
+  if (generic) opts.push('GENERIC_PLAN');
+  if (o.json) opts.push('FORMAT JSON');
+  let sql = s.text.trim().replace(/;\s*$/, '');
+  let cmd = 'EXPLAIN ' + (opts.length ? '(' + opts.join(', ') + ')' : '') + '\n' + sql + ';';
+  const dml = /^\s*(?:with\b[\s\S]*?\)\s*)?(insert|update|delete|merge)\b/i.test(sql) || /^\s*(insert|update|delete|merge)\b/i.test(sql);
+  if (o.analyze && dml) cmd = 'BEGIN;\n' + cmd + '\nROLLBACK;  -- ANALYZE executa a SQL de verdade; o ROLLBACK desfaz a alteração';
+  return { cmd, hasParams, generic, dml };
+}
+function renderPlanTab(body, s, plans) {
+  if (plans.length) {
+    let cur = plans.find(p => p.id === state.planChoice[s.id]) || plans[0];
+    const pick = h('div', { class: 'planpick' });
+    plans.slice(0, 12).forEach(p => {
+      const lbl = (p.source === 'colado' ? 'colado' : p.source) + (p.ts != null ? ' · ' + fmtDT(p.ts) : '') + ' · ' + (p.durationMs != null ? fmtDur(p.durationMs) : p.analyze ? fmtDur(p.execution || p.total) : 'custo ' + nf0.format(p.root.totalCost || 0));
+      pick.append(h('button', { type: 'button', 'aria-pressed': String(p === cur), onclick: () => { state.planChoice[s.id] = p.id; renderDrawer(); }, text: lbl }));
+    });
+    const sec = h('section', null, h('h4', { text: plans.length > 1 ? 'Planos encontrados (' + plans.length + ')' : 'Plano encontrado' }), plans.length > 1 ? pick : h('div', { class: 'muted', style: { fontSize: '12.5px' }, text: 'Origem: ' + (cur.source === 'colado' ? 'colado por você neste navegador' : cur.source) }), renderPlan(cur));
+    if (cur.source === 'colado') sec.append(h('div', null, h('button', { class: 'btn small', type: 'button', onclick: () => { LS.set('plan:' + s.id, null); state.plans = state.plans.filter(p => p !== cur); renderDrawer(); renderNotice(); }, text: 'Remover plano colado' })));
+    body.append(sec);
+  } else {
+    body.append(h('div', { class: 'callout info', text: state.plans.length
+      ? 'Nenhum dos ' + state.plans.length + ' planos carregados corresponde a esta SQL. Cole a saída de um EXPLAIN abaixo ou carregue um log do auto_explain que a contenha.'
+      : 'Ainda não há plano para esta SQL. Carregue um log do auto_explain em "Abrir planos…" ou gere o EXPLAIN abaixo, rode no banco e cole o resultado.' }));
+  }
+  // colar
+  const ta = h('textarea', { class: 'paste', id: 'pastePlan', placeholder: 'Cole aqui a saída do EXPLAIN (texto ou FORMAT JSON) ou um trecho de log do auto_explain', spellcheck: 'false' });
+  const msg = h('span', { class: 'muted', style: { fontSize: '12.5px' } });
+  const go = h('button', { class: 'btn small primary', type: 'button', text: 'Analisar e guardar' });
+  go.addEventListener('click', () => {
+    const raw = ta.value.trim();
+    if (!raw) { msg.textContent = 'Cole um plano primeiro.'; return; }
+    const ps = extractPlans(raw);
+    if (!ps.length) { msg.textContent = 'Não reconheci um plano nesse texto. Esperado: saída de EXPLAIN em texto ou JSON.'; return; }
+    ps.forEach(p => { p.sqlId = s.id; p.raw = p.raw || raw; });
+    state.plans = state.plans.filter(p => !(p.source === 'colado' && p.sqlId === s.id));
+    addPlans(ps.slice(0, 1), 'colado');
+    LS.set('plan:' + s.id, raw);
+    state.planChoice[s.id] = state.plans[state.plans.length - 1].id;
+    renderDrawer(); renderNotice();
+  });
+  const det = h('details', { open: plans.length ? null : true },
+    h('summary', { style: { cursor: 'pointer', fontWeight: 600, fontSize: '13px' }, text: 'Colar um plano para esta SQL' }),
+    h('div', { style: { display: 'grid', gap: '8px', marginTop: '8px' } }, ta, h('div', { class: 'opts' }, go, msg)));
+  body.append(h('section', null, det));
+  // gerar EXPLAIN
+  const o = { analyze: false, buffers: true, verbose: false, json: false };
+  try { Object.assign(o, JSON.parse(LS.get('explainOpts') || '{}')); } catch (e) { /* padrão */ }
+  const pre = h('pre', { class: 'raw' });
+  const note = h('div', { class: 'muted', style: { fontSize: '12.5px' } });
+  const upd = () => {
+    const r = explainCmd(s, o);
+    pre.textContent = r.cmd;
+    const notes = [];
+    if (r.generic) notes.push('A SQL tem parâmetros ($1, $2…): GENERIC_PLAN (PostgreSQL 16+) mostra o plano genérico sem valores. Para ANALYZE, troque os parâmetros por valores reais.');
+    if (o.analyze) notes.push('ANALYZE executa a SQL de verdade e leva o mesmo tempo que ela.');
+    if (s.truncated) notes.push('Atenção: o texto está cortado; complete a SQL antes de rodar.');
+    note.textContent = notes.join(' ');
+  };
+  const cb = (k, label) => { const i = h('input', { type: 'checkbox', id: 'ex_' + k }); i.checked = o[k]; i.addEventListener('change', () => { o[k] = i.checked; LS.set('explainOpts', JSON.stringify(o)); upd(); }); return h('label', { class: 'check', for: 'ex_' + k }, i, label); };
+  const cp = h('button', { class: 'btn small', type: 'button', text: 'Copiar' });
+  cp.addEventListener('click', () => copyText(pre.textContent, cp));
+  upd();
+  body.append(h('section', null, h('h4', null, h('span', { text: 'Gerar comando EXPLAIN' }), cp),
+    h('div', { class: 'opts' }, cb('analyze', 'ANALYZE'), cb('buffers', 'BUFFERS'), cb('verbose', 'VERBOSE'), cb('json', 'FORMAT JSON')), note, pre));
+}
+
+// ---------- aviso / status ----------
+function renderNotice() {
+  const box = $('#notice'); box.textContent = '';
+  box.className = 'notice' + (state.demo ? ' demo' : '');
+  const M = state.model;
+  if (!M) { box.append('Abra um arquivo de amostras para começar.'); return; }
+  if (state.demo) box.append(h('span', null, h('b', { text: 'Dados de exemplo.' }), ' Loja virtual fictícia, 3 dias de amostras a cada 60 s, com um relatório noturno pesado, uma tempestade de locks na quarta às 15h e planos do auto_explain. Abra o seu arquivo para analisar o seu banco.'));
+  else box.append(h('span', null, h('b', { text: state.files.join(', ') }), ' · ' + nf0.format(M.rows) + ' linhas · ' + nf0.format(M.sqls.length) + ' SQLs distintas'));
+  const planFrom = state.plans.filter(p => p.source !== 'colado').length, pasted = state.plans.length - planFrom;
+  if (state.plans.length) box.append(h('span', { class: 'ink2', text: nf0.format(planFrom) + ' planos carregados' + (pasted ? ' · ' + pasted + ' colados' : '') }));
+  const w = state.warnings.slice();
+  if (!M.sampled) w.push('Sem coluna sample_time (ou só uma amostra): tratado como foto única. Para ver a carga ao longo do dia, colete amostras periódicas (veja "Como coletar").');
+  if (M.naive) w.push('Os horários não têm fuso; exibidos como estão no arquivo.');
+  if (M.skipped) w.push(nf0.format(M.skipped) + ' linhas sem SQL ou sem horário foram ignoradas.');
+  if (w.length) box.append(h('ul', { class: 'warnlist' }, w.map(x => h('li', { text: x }))));
+}
+function fillSelect(sel, map, cur, allLabel) {
+  sel.textContent = '';
+  sel.append(h('option', { value: '', text: allLabel }));
+  [...map.entries()].sort((a, b) => b[1] - a[1]).forEach(([k]) => { const v = k === '' ? EMPTY : k; const o = h('option', { value: v, text: k === '' ? '(vazio)' : k }); if (v === cur) o.selected = true; sel.append(o); });
+  sel.disabled = map.size <= 1;
+}
+function setupControls() {
+  const M = state.model;
+  fillSelect($('#fDb'), M.dims.db, state.filters.db, 'Todos');
+  fillSelect($('#fUser'), M.dims.user, state.filters.user, 'Todos');
+  fillSelect($('#fApp'), M.dims.app, state.filters.app, 'Todas');
+  fillSelect($('#fBt'), M.dims.bt, state.filters.bt, 'Todos');
+  const tz = $('#fTz'); tz.textContent = '';
+  const browserOff = -new Date().getTimezoneOffset();
+  const opts = [['data', M.naive ? 'Como no arquivo' : 'Do arquivo (' + offLabel(M.dataOffset) + ')'], ['utc', 'UTC'], ['browser', 'Deste computador (' + offLabel(browserOff) + ')']];
+  opts.forEach(([v, l]) => { const o = h('option', { value: v, text: l }); if (v === state.tzMode) o.selected = true; tz.append(o); });
+  state.tzOff = state.tzMode === 'utc' ? 0 : state.tzMode === 'browser' ? browserOff : M.dataOffset;
+  $('#stWait').disabled = !M.sampled;
+  if (!M.sampled && state.stack === 'wait') state.stack = 'sql';
+  $('#stSql').setAttribute('aria-pressed', String(state.stack === 'sql'));
+  $('#stWait').setAttribute('aria-pressed', String(state.stack === 'wait'));
+}
+
+function renderAll() {
+  if (!state.model) return;
+  state.view = computeView();
+  renderSelChip();
+  renderKpis();
+  renderTimeline();
+  renderHeatmap();
+  renderTable();
+  if (state.openSql != null) renderDrawer();
+}
+
+// ---------- carregamento ----------
+function loadModel(recs, files, demo) {
+  normCache.clear();
+  state.model = buildModel(recs);
+  state.files = files; state.demo = demo;
+  state.sel = null; state.openSql = null; state.showAll = false; state.planChoice = {};
+  state.filters = { ...state.filters, db: '', user: '', app: '', bt: '', text: '' };
+  $('#fText').value = '';
+  $('#drawer').hidden = true;
+  loadSavedPlans();
+  setupControls();
+  renderNotice();
+  renderAll();
+}
+function looksLikePlanFile(name, text) {
+  if (/explain|plan|auto_?explain|postgresql.*\.log/i.test(name)) return true;
+  const head = text.slice(0, 200000);
+  return /duration: [\d.]+ ms\s+plan:/.test(head) || /"Plan"\s*:\s*\{/.test(head) || /^\s*QUERY PLAN\s*$/m.test(head);
+}
+async function handleFiles(fileList, kind) {
+  const files = [...fileList];
+  if (!files.length) return;
+  $('#app').classList.add('loading');
+  state.warnings = [];
+  try {
+    const actTexts = [], planTexts = [];
+    for (const f of files) {
+      const text = await readFileText(f);
+      const k = kind || (looksLikePlanFile(f.name, text) ? 'plan' : 'act');
+      (k === 'plan' ? planTexts : actTexts).push({ name: f.name, text });
+    }
+    if (actTexts.length) {
+      let recs = [];
+      for (const { name, text } of actTexts) {
+        try { recs = recs.concat(parseActivity(text)); }
+        catch (e) { state.warnings.push(name + ': ' + e.message); }
+      }
+      if (!recs.length) throw new Error('Nenhuma linha válida encontrada. ' + state.warnings.join(' '));
+      if (state.demo) state.plans = [];
+      const warns = state.warnings;
+      loadModel(recs, actTexts.map(x => x.name), false);
+      state.warnings = warns;
+    }
+    for (const { name, text } of planTexts) {
+      const ps = extractPlans(text);
+      if (!ps.length) { state.warnings.push(name + ': nenhum plano reconhecido.'); continue; }
+      if (state.demo && !actTexts.length) { /* mantém exemplo */ }
+      addPlans(ps, name);
+      const orphan = ps.filter(p => !p.queryText && !p.qid).length;
+      if (orphan) state.warnings.push(name + ': ' + orphan + ' plano(s) sem o texto da SQL. Para usá-los, abra a SQL e cole o plano na aba Plano.');
+    }
+    renderNotice();
+    if (state.openSql != null) renderDrawer();
+  } catch (e) {
+    state.warnings.push(e.message || String(e));
+    renderNotice();
+  } finally {
+    $('#app').classList.remove('loading');
+  }
+}
+
+// ---------- dados de exemplo ----------
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function generateDemo() {
+  const R = mulberry32(20261021);
+  const rnd = (a, b) => a + R() * (b - a), rint = (a, b) => Math.floor(rnd(a, b + 1)), pick = arr => arr[Math.floor(R() * arr.length)];
+  const gauss = () => { let u = 0, v = 0; while (!u) u = R(); while (!v) v = R(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+  const poisson = l => { if (l <= 0) return 0; if (l > 30) return Math.max(0, Math.round(l + Math.sqrt(l) * gauss())); const L = Math.exp(-l); let k = 0, p = 1; do { k++; p *= R(); } while (p > L); return k - 1; };
+  const OFF = -180, DAY = 864e5, MIN = 6e4, SEC = 1e3;
+  const T0 = Date.UTC(2026, 9, 20, 3, 0, 0), T1 = T0 + 3 * DAY, STEP = MIN;
+  const ts = ms => { ms = Math.floor(ms); const p = parts(ms, OFF); return `${p.y}-${p2(p.mo)}-${p2(p.d)} ${p2(p.h)}:${p2(p.mi)}:${p2(p.s)}.${String((ms % 1000) * 1000 + 417).padStart(6, '0')}-03`; };
+  const load = ms => { const p = parts(ms, OFF), x = p.h + p.mi / 60; return 0.06 + 0.95 * Math.exp(-((x - 10.5) ** 2) / 6) + 0.8 * Math.exp(-((x - 15.5) ** 2) / 5) + 0.5 * Math.exp(-((x - 20.5) ** 2) / 2.5); };
+  const pickW = ws => { let r = R() * ws.reduce((a, w) => a + w[2], 0); for (const w of ws) { r -= w[2]; if (r <= 0) return w; } return ws[ws.length - 1]; };
+  const names = ['ana.souza', 'bruno.lima', 'carla.mendes', 'diego.alves', 'elisa.rocha', 'felipe.costa', 'gabi.nunes', 'heitor.dias'];
+  const doms = ['gmail.com', 'hotmail.com', 'uol.com.br', 'empresa.com.br'];
+  const SHORT = [
+    { qid: '-6810393413961620421', text: () => 'SELECT p.id, p.nome, p.preco, p.estoque_disponivel\n  FROM produtos p\n WHERE p.categoria_id = $1\n   AND p.ativo\n ORDER BY p.vendas_30d DESC\n LIMIT 24', act: 1.5, dur: 60, waits: [['', '', .78], ['IO', 'DataFileRead', .17], ['LWLock', 'BufferMapping', .05]] },
+    { qid: '3155729145502861190', text: () => `SELECT * FROM pedidos WHERE cliente_id = ${rint(1000, 99999)} ORDER BY criado_em DESC LIMIT 50`, act: .55, dur: 90, waits: [['', '', .6], ['IO', 'DataFileRead', .4]] },
+    { qid: '8027263400413313349', text: () => `SELECT c.id, c.nome, c.senha_hash FROM clientes c WHERE lower(c.email) = lower('${pick(names)}@${pick(doms)}')`, act: 1.25, dur: 850, waits: [['', '', .52], ['IO', 'DataFileRead', .45], ['IPC', 'ParallelFinish', .03]] },
+    { qid: '-1958222011870533047', text: () => 'INSERT INTO eventos_auditoria (usuario_id, acao, payload, criado_em) VALUES ($1, $2, $3, now())', act: .32, dur: 8, waits: [['LWLock', 'WALWrite', .45], ['IO', 'WALSync', .35], ['', '', .2]] },
+    { qid: '4402917120983517765', text: () => `UPDATE estoque SET quantidade = quantidade - ${rint(1, 3)}, atualizado_em = now() WHERE produto_id = ${rint(1000, 1300)}`, act: .14, dur: 25, waits: [['', '', .45], ['Lock', 'transactionid', .2], ['IO', 'WALSync', .35]] },
+    { qid: '-7739001462267019282', text: () => "SELECT i.produto_id, sum(i.quantidade) AS qtd\n  FROM itens_pedido i\n  JOIN pedidos p ON p.id = i.pedido_id\n WHERE p.criado_em >= now() - interval '1 hour'\n GROUP BY i.produto_id\n ORDER BY qtd DESC\n LIMIT 10", act: .45, dur: 2400, waits: [['', '', .55], ['IO', 'DataFileRead', .37], ['IO', 'BufFileRead', .08]] },
+  ];
+  const UPD = SHORT[4];
+  const rows = [];
+  const pool = Array.from({ length: 18 }, (_, i) => ({ pid: String(41000 + i), bs: ts(T0 - 2 * DAY + i * 7341 * SEC), client: '10.0.2.' + (11 + (i % 4)) }));
+  const row = (o) => rows.push(o);
+  const base = (t, p, extra) => Object.assign({ sample_time: t, pid: p.pid, leader_pid: '', datname: 'loja', usename: 'app_web', application_name: 'loja-api', client_addr: p.client, backend_type: 'client backend', backend_start: p.bs, xact_start: '', wait_event_type: '', wait_event: '', query_id: '' }, extra);
+  // execuções longas
+  const LONG = [];
+  const relText = "WITH vendas AS (\n  SELECT date_trunc('day', p.criado_em) AS dia, c.uf, i.produto_id,\n         sum(i.quantidade * i.preco_unitario) AS receita\n    FROM pedidos p\n    JOIN itens_pedido i ON i.pedido_id = p.id\n    JOIN clientes c ON c.id = p.cliente_id\n   WHERE p.criado_em >= now() - interval '90 days'\n     AND p.status <> 'CANCELADO'\n   GROUP BY 1, 2, 3\n)\nSELECT dia, uf, sum(receita) AS receita, count(DISTINCT produto_id) AS mix\n  FROM vendas\n GROUP BY dia, uf\n ORDER BY dia, uf";
+  const dashText = "SELECT c.uf, date_trunc('hour', p.criado_em) AS hora, count(*) AS pedidos, sum(p.valor_total) AS receita,\n       percentile_cont(0.5) WITHIN GROUP (ORDER BY p.valor_total) AS ticket_mediano\n  FROM pedidos p\n  JOIN clientes c ON c.id = p.cliente_id\n WHERE p.criado_em >= date_trunc('day', now())\n GROUP BY 1, 2\n ORDER BY 2, 1";
+  for (let d = 0; d < 3; d++) {
+    const day = T0 + d * DAY;
+    const st = day + 2 * 3600e3 + 5 * MIN + rnd(0, 180) * SEC;
+    LONG.push({ text: relText, qid: '5521840937718302214', user: 'etl', app: 'airflow:relatorio_vendas_diario', pid: String(70001 + d), client: '10.0.5.20', start: st, dur: rnd(24, 41) * MIN, waits: [['IO', 'DataFileRead', .52], ['', '', .3], ['IO', 'BufFileWrite', .12], ['IO', 'BufFileRead', .06]] });
+    for (let m = 0; m < 24 * 60; m += 5) {
+      const s = day + m * MIN + rnd(0, 59) * SEC;
+      LONG.push({ text: "SELECT count(*) FROM pedidos WHERE status = 'PENDENTE' AND criado_em < now() - interval '1 hour'", qid: '-284091372650194875', user: 'app_jobs', app: 'worker-pedidos', pid: '52010', client: '10.0.3.7', start: s, dur: rnd(9, 16) * SEC * (1 + 0.9 * load(s)), waits: [['', '', .4], ['IO', 'DataFileRead', .5], ['IPC', 'ExecuteGather', .1]] });
+    }
+    for (let m = 7 * 60; m < 22 * 60; m += 15) {
+      const s = day + m * MIN + rnd(0, 20) * SEC;
+      LONG.push({ text: dashText, qid: '7106628811093345120', user: 'bi_leitura', app: 'Metabase', pid: String(61001 + (m / 15) % 2), client: '10.0.9.3', start: s, dur: rnd(30, 80) * SEC * (0.6 + load(s)), waits: [['', '', .62], ['IO', 'DataFileRead', .3], ['IPC', 'ExecuteGather', .08]] });
+    }
+    for (let hh = 0; hh < 24; hh++) {
+      const s = day + hh * 3600e3 + rnd(0, 20) * SEC;
+      LONG.push({ text: 'DELETE FROM sessoes_web WHERE expira_em < now()', qid: '1290446385271940211', user: 'app_jobs', app: 'cron-limpeza', pid: '52011', client: '10.0.3.7', start: s, dur: rnd(40, 140) * SEC, waits: [['IO', 'DataFileRead', .3], ['LWLock', 'WALWrite', .3], ['IO', 'WALSync', .2], ['', '', .2]] });
+    }
+  }
+  [[0, 11, 20, 12], [1, 4, 10, 9], [2, 13, 40, 14]].forEach(([d, hh, mm, len], k) => {
+    LONG.push({ text: 'autovacuum: VACUUM ANALYZE public.pedidos', qid: '', user: '', app: '', bt: 'autovacuum worker', pid: String(88100 + k), client: '', start: T0 + d * DAY + (hh * 60 + mm) * MIN, dur: len * MIN, waits: [['Timeout', 'VacuumDelay', .5], ['IO', 'DataFileRead', .35], ['', '', .15]] });
+  });
+  // tempestade de locks: quarta 21/10, 15:02–15:41, bloqueada por uma sessão "idle in transaction"
+  const LOCK_A = T0 + DAY + (15 * 60 + 2) * MIN, LOCK_B = T0 + DAY + (15 * 60 + 41) * MIN + 5 * SEC;
+  for (let k = 0; k < 20; k++) {
+    const s = LOCK_A + k * 25 * SEC + rnd(0, 10) * SEC;
+    LONG.push({ text: UPD.text(), qid: UPD.qid, user: 'app_web', app: 'loja-api', pid: String(41100 + k), client: '10.0.2.' + (11 + k % 4), start: s, dur: LOCK_B + rnd(0, 3) * SEC - s, waits: [['Lock', 'transactionid', .97], ['', '', .03]], lock: true });
+  }
+  for (const e of LONG) { e.qs = ts(e.start); e.bs = e.bs || ts(e.start - rnd(1, 5) * SEC); }
+  for (let t = T0; t < T1; t += STEP) {
+    const T = ts(t), L = load(t), used = new Set();
+    const inLock = t >= LOCK_A && t < LOCK_B;
+    // execuções longas ativas / recém-terminadas
+    for (const e of LONG) {
+      const end = e.start + e.dur;
+      if (t < e.start || t - end > STEP) continue;
+      const r = { sample_time: T, pid: e.pid, leader_pid: '', datname: 'loja', usename: e.user, application_name: e.app, client_addr: e.client, backend_type: e.bt || 'client backend', backend_start: e.bs, xact_start: e.qs, query_start: e.qs, query_id: e.qid, query: e.text };
+      used.add(e.pid);
+      if (t < end) { const w = pickW(e.waits); row(Object.assign(r, { state: 'active', state_change: e.qs, wait_event_type: w[0], wait_event: w[1] })); }
+      else row(Object.assign(r, { state: 'idle', xact_start: '', state_change: ts(end), wait_event_type: 'Client', wait_event: 'ClientRead' }));
+    }
+    if (t >= LOCK_A - 30 * SEC && t < LOCK_B - 6 * SEC) {
+      row({ sample_time: T, pid: '60123', leader_pid: '', datname: 'loja', usename: 'joao.dba', application_name: 'psql', client_addr: '10.0.8.41', backend_type: 'client backend', backend_start: ts(LOCK_A - 20 * MIN), xact_start: ts(LOCK_A - 40 * SEC), query_start: ts(LOCK_A - 31 * SEC), state_change: ts(LOCK_A - 30.6 * SEC), state: 'idle in transaction', wait_event_type: 'Client', wait_event: 'ClientRead', query_id: '', query: 'UPDATE estoque SET quantidade = quantidade + 500 WHERE produto_id = 1201' });
+    }
+    // SQLs curtas do pool da API
+    const free = pool.filter(p => !used.has(p.pid));
+    let extra = 0;
+    for (const tp of SHORT) {
+      if (inLock && tp === UPD) continue;
+      const k = poisson(tp.act * L * (inLock ? 0.6 : 1));
+      for (let j = 0; j < k; j++) {
+        const p = free.length ? free.splice(Math.floor(R() * free.length), 1)[0] : { pid: String(41050 + extra++), bs: ts(t - 3600e3), client: '10.0.2.19' };
+        used.add(p.pid);
+        const el = R() * tp.dur * 2.2, qs = ts(t - el), w = pickW(tp.waits);
+        row(base(T, p, { query_start: qs, state_change: qs, state: 'active', wait_event_type: w[0], wait_event: w[1], query_id: tp.qid, query: tp.text(), xact_start: qs }));
+      }
+    }
+    for (const p of free) {
+      if (R() > 0.5 * Math.min(1, L * 1.4)) continue;
+      const tp = pickW(SHORT.map(s => [s, '', s === UPD && inLock ? 0 : s.act / s.dur * 1000]))[0];
+      const qa = t - rnd(0.5, STEP / SEC) * SEC, dur = Math.min(t - qa - 1, tp.dur * rnd(0.4, 1.8));
+      row(base(T, p, { query_start: ts(qa), state_change: ts(qa + dur), state: 'idle', wait_event_type: 'Client', wait_event: 'ClientRead', query_id: tp.qid, query: tp.text() }));
+    }
+    // a própria coleta (oculta por padrão)
+    row({ sample_time: T, pid: '99001', datname: 'postgres', usename: 'monitor', application_name: 'psql', client_addr: '10.0.1.5', backend_type: 'client backend', backend_start: T, xact_start: T, query_start: T, state_change: T, state: 'active', query: 'COPY (SELECT now() AS sample_time, pid, leader_pid, datname, usename, application_name, client_addr, backend_type, backend_start, xact_start, query_start, state_change, state, wait_event_type, wait_event, query_id, query FROM pg_stat_activity WHERE pid <> pg_backend_pid()) TO STDOUT WITH (FORMAT csv, HEADER)' });
+  }
+  // log do auto_explain (formatos JSON e texto) para os planos
+  const N = (type, o, kids) => Object.assign({ 'Node Type': type }, o, kids ? { Plans: kids } : {});
+  const logJson = (when, pid, who, dur, obj) => {
+    const body = JSON.stringify(obj, null, 2).replace(/"Query Identifier": "(-?\d+)"/, '"Query Identifier": $1');
+    return `${when} -03 [${pid}] ${who} LOG:  duration: ${dur} ms  plan:\n` + body.split('\n').map(l => '\t' + l).join('\n') + '\n';
+  };
+  const logText = (when, pid, who, dur, q, plan) => `${when} -03 [${pid}] ${who} LOG:  duration: ${dur} ms  plan:\n\tQuery Text: ${q.split('\n').join('\n\t')}\n` + plan.trim().split('\n').map(l => '\t' + l).join('\n') + '\n';
+  let log = '2026-10-20 00:00:01.001 -03 [1203] LOG:  checkpoint starting: time\n';
+  log += logJson('2026-10-20 10:14:03.118', 41007, 'app_web@loja', '842.317', {
+    'Query Text': "SELECT c.id, c.nome, c.senha_hash FROM clientes c WHERE lower(c.email) = lower('ana.souza@gmail.com')", 'Query Identifier': '8027263400413313349',
+    Plan: N('Gather', { 'Parallel Aware': false, 'Startup Cost': 1000, 'Total Cost': 36210.5, 'Plan Rows': 6420, 'Plan Width': 72, 'Actual Startup Time': 801.2, 'Actual Total Time': 838.9, 'Actual Rows': 1, 'Actual Loops': 1, 'Workers Planned': 2, 'Workers Launched': 2, 'Shared Hit Blocks': 2112, 'Shared Read Blocks': 21808 }, [
+      N('Seq Scan', { 'Parent Relationship': 'Outer', 'Parallel Aware': true, 'Relation Name': 'clientes', Alias: 'c', 'Startup Cost': 0, 'Total Cost': 34568.5, 'Plan Rows': 2675, 'Plan Width': 72, 'Actual Startup Time': 790.5, 'Actual Total Time': 811.4, 'Actual Rows': 0, 'Actual Loops': 3, Filter: "(lower((email)::text) = 'ana.souza@gmail.com'::text)", 'Rows Removed by Filter': 428105, 'Shared Hit Blocks': 2112, 'Shared Read Blocks': 21808 }),
+    ]),
+  });
+  log += logJson('2026-10-20 11:30:12.660', 52010, 'app_jobs@loja', '14872.044', {
+    'Query Text': "SELECT count(*) FROM pedidos WHERE status = 'PENDENTE' AND criado_em < now() - interval '1 hour'", 'Query Identifier': '-284091372650194875',
+    Plan: N('Aggregate', { Strategy: 'Plain', 'Partial Mode': 'Finalize', 'Startup Cost': 219876.6, 'Total Cost': 219876.61, 'Plan Rows': 1, 'Plan Width': 8, 'Actual Startup Time': 14869.1, 'Actual Total Time': 14871.7, 'Actual Rows': 1, 'Actual Loops': 1 }, [
+      N('Gather', { 'Startup Cost': 219876.4, 'Total Cost': 219876.6, 'Plan Rows': 2, 'Plan Width': 8, 'Actual Startup Time': 14868.9, 'Actual Total Time': 14871.6, 'Actual Rows': 3, 'Actual Loops': 1, 'Workers Planned': 2, 'Workers Launched': 2 }, [
+        N('Aggregate', { Strategy: 'Plain', 'Partial Mode': 'Partial', 'Startup Cost': 218876.4, 'Total Cost': 218876.41, 'Plan Rows': 1, 'Plan Width': 8, 'Actual Startup Time': 14860.2, 'Actual Total Time': 14860.2, 'Actual Rows': 1, 'Actual Loops': 3 }, [
+          N('Seq Scan', { 'Parallel Aware': true, 'Relation Name': 'pedidos', Alias: 'pedidos', 'Startup Cost': 0, 'Total Cost': 218790.1, 'Plan Rows': 34520, 'Plan Width': 0, 'Actual Startup Time': 3.1, 'Actual Total Time': 14851.8, 'Actual Rows': 1544, 'Actual Loops': 3, Filter: "((status = 'PENDENTE'::text) AND (criado_em < (now() - '01:00:00'::interval)))", 'Rows Removed by Filter': 2921455, 'Shared Hit Blocks': 30211, 'Shared Read Blocks': 151377 }),
+        ]),
+      ]),
+    ]),
+  });
+  log += logJson('2026-10-21 16:02:48.902', 41003, 'app_web@loja', '2911.530', {
+    'Query Text': SHORT[5].text(), 'Query Identifier': '-7739001462267019282',
+    Plan: N('Limit', { 'Startup Cost': 1450.2, 'Total Cost': 1450.23, 'Plan Rows': 10, 'Plan Width': 12, 'Actual Startup Time': 2905.6, 'Actual Total Time': 2905.6, 'Actual Rows': 10, 'Actual Loops': 1 }, [
+      N('Sort', { 'Startup Cost': 1450.2, 'Total Cost': 1450.5, 'Plan Rows': 118, 'Plan Width': 12, 'Actual Startup Time': 2905.6, 'Actual Total Time': 2905.6, 'Actual Rows': 10, 'Actual Loops': 1, 'Sort Key': ['(sum(i.quantidade)) DESC'], 'Sort Method': 'top-N heapsort', 'Sort Space Used': 26, 'Sort Space Type': 'Memory' }, [
+        N('Aggregate', { Strategy: 'Hashed', 'Startup Cost': 1446.1, 'Total Cost': 1447.3, 'Plan Rows': 118, 'Plan Width': 12, 'Actual Startup Time': 2899.4, 'Actual Total Time': 2902.7, 'Actual Rows': 3184, 'Actual Loops': 1, 'Group Key': ['i.produto_id'] }, [
+          N('Nested Loop', { 'Join Type': 'Inner', 'Startup Cost': 0.86, 'Total Cost': 1444.9, 'Plan Rows': 240, 'Plan Width': 8, 'Actual Startup Time': 0.05, 'Actual Total Time': 2841.2, 'Actual Rows': 151204, 'Actual Loops': 1 }, [
+            N('Index Scan', { 'Index Name': 'pedidos_criado_em_idx', 'Relation Name': 'pedidos', Alias: 'p', 'Startup Cost': 0.43, 'Total Cost': 12.6, 'Plan Rows': 120, 'Plan Width': 8, 'Actual Startup Time': 0.02, 'Actual Total Time': 61.3, 'Actual Rows': 48210, 'Actual Loops': 1, 'Index Cond': "(criado_em >= (now() - '01:00:00'::interval))", 'Shared Hit Blocks': 9180, 'Shared Read Blocks': 412 }),
+            N('Index Scan', { 'Index Name': 'itens_pedido_pedido_id_idx', 'Relation Name': 'itens_pedido', Alias: 'i', 'Startup Cost': 0.43, 'Total Cost': 11.9, 'Plan Rows': 2, 'Plan Width': 12, 'Actual Startup Time': 0.04, 'Actual Total Time': 0.055, 'Actual Rows': 3, 'Actual Loops': 48210, 'Index Cond': '(pedido_id = p.id)', 'Shared Hit Blocks': 171504, 'Shared Read Blocks': 22719 }),
+          ]),
+        ]),
+      ]),
+    ]),
+  });
+  log += logText('2026-10-21 02:39:41.077', 70002, 'etl@loja', '1956120.884', relText, `
+Sort  (cost=2914421.55..2914431.80 rows=4100 width=52) (actual time=1955902.12..1955904.73 rows=2457 loops=1)
+  Sort Key: vendas.dia, vendas.uf
+  Sort Method: quicksort  Memory: 289kB
+  ->  HashAggregate  (cost=2914120.10..2914175.37 rows=4100 width=52) (actual time=1955880.41..1955899.95 rows=2457 loops=1)
+        Group Key: vendas.dia, vendas.uf
+        ->  Subquery Scan on vendas  (cost=2802113.92..2900281.17 rows=922740 width=46) (actual time=1771301.80..1952764.12 rows=1214870 loops=1)
+              ->  GroupAggregate  (cost=2802113.92..2891053.77 rows=922740 width=46) (actual time=1771301.79..1951987.61 rows=1214870 loops=1)
+                    Group Key: (date_trunc('day'::text, p.criado_em)), c.uf, i.produto_id
+                    ->  Sort  (cost=2802113.92..2825182.42 rows=9227400 width=28) (actual time=1771301.70..1903218.44 rows=9311204 loops=1)
+                          Sort Key: (date_trunc('day'::text, p.criado_em)), c.uf, i.produto_id
+                          Sort Method: external merge  Disk: 482312kB
+                          ->  Hash Join  (cost=412233.10..1360552.93 rows=9227400 width=28) (actual time=21033.44..1689410.27 rows=9311204 loops=1)
+                                Hash Cond: (p.cliente_id = c.id)
+                                ->  Hash Join  (cost=296110.55..1098241.21 rows=9227400 width=28) (actual time=15510.10..1544120.66 rows=9311204 loops=1)
+                                      Hash Cond: (i.pedido_id = p.id)
+                                      ->  Seq Scan on itens_pedido i  (cost=0.00..512033.12 rows=24401812 width=20) (actual time=0.41..1210554.90 rows=24401902 loops=1)
+                                      ->  Hash  (cost=231012.30..231012.30 rows=3762100 width=16) (actual time=15488.73..15488.73 rows=3790412 loops=1)
+                                            Buckets: 262144  Batches: 32  Memory Usage: 7224kB
+                                            ->  Seq Scan on pedidos p  (cost=0.00..231012.30 rows=3762100 width=16) (actual time=0.03..13310.27 rows=3790412 loops=1)
+                                                  Filter: ((status <> 'CANCELADO'::text) AND (criado_em >= (now() - '90 days'::interval)))
+                                                  Rows Removed by Filter: 5221933
+                                ->  Hash  (cost=88211.40..88211.40 rows=1290840 width=11) (actual time=5502.11..5502.11 rows=1290840 loops=1)
+                                      Buckets: 131072  Batches: 16  Memory Usage: 4528kB
+                                      ->  Seq Scan on clientes c  (cost=0.00..88211.40 rows=1290840 width=11) (actual time=0.02..4870.66 rows=1290840 loops=1)
+Planning Time: 2.118 ms
+Execution Time: 1956108.931 ms`);
+  log += logText('2026-10-21 15:41:05.311', 41104, 'app_web@loja', '2348811.402', 'UPDATE estoque SET quantidade = quantidade - 1, atualizado_em = now() WHERE produto_id = 1201', `
+Update on estoque  (cost=0.29..8.31 rows=0 width=0) (actual time=2348811.21..2348811.21 rows=0 loops=1)
+  ->  Index Scan using estoque_produto_id_key on estoque  (cost=0.29..8.31 rows=1 width=18) (actual time=2348810.94..2348810.96 rows=1 loops=1)
+        Index Cond: (produto_id = 1201)
+Planning Time: 0.091 ms
+Execution Time: 2348811.288 ms`);
+  log += '2026-10-21 15:41:05.312 -03 [60123] joao.dba@loja LOG:  statement: COMMIT\n';
+  return { rows, log };
+}
+function loadDemo() {
+  const { rows, log } = generateDemo();
+  state.plans = state.plans.filter(p => p.source === 'colado');
+  loadModel(rows, ['exemplo'], true);
+  addPlans(extractPlans(log), 'auto_explain (exemplo)');
+  renderNotice();
+}
+
+// ---------- eventos ----------
+$('#btnOpen').addEventListener('click', () => $('#fileAct').click());
+$('#btnPlans').addEventListener('click', () => $('#filePlan').click());
+$('#btnDemo').addEventListener('click', loadDemo);
+$('#fileAct').addEventListener('change', e => { handleFiles(e.target.files, 'act'); e.target.value = ''; });
+$('#filePlan').addEventListener('change', e => { handleFiles(e.target.files, 'plan'); e.target.value = ''; });
+const onFilter = (id, key) => $(id).addEventListener('change', e => { state.filters[key] = e.target.value; renderAll(); });
+onFilter('#fDb', 'db'); onFilter('#fUser', 'user'); onFilter('#fApp', 'app'); onFilter('#fBt', 'bt');
+$('#fMon').addEventListener('change', e => { state.filters.hideMon = e.target.checked; renderAll(); });
+$('#fText').addEventListener('input', e => { state.filters.text = e.target.value; renderTable(); });
+$('#fGran').addEventListener('change', e => { state.gran = e.target.value; renderAll(); });
+$('#fTz').addEventListener('change', e => { state.tzMode = e.target.value; setupControls(); renderAll(); });
+$('#fCpu').addEventListener('input', e => { state.cpus = Math.max(0, +e.target.value || 0); LS.set('cpus', state.cpus || null); if (state.model) renderTimeline(); });
+$('#stSql').addEventListener('click', () => { state.stack = 'sql'; setupControls(); renderAll(); });
+$('#stWait').addEventListener('click', () => { state.stack = 'wait'; setupControls(); renderAll(); });
+$('#drClose').addEventListener('click', closeDrawer);
+$('#drCopyId').addEventListener('click', e => { const s = state.model.sqls[state.openSql]; if (s) copyText(s.id, e.currentTarget); });
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => { state.tab = b.dataset.tab; renderDrawer(); }));
+document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', () => copyText($('#' + b.dataset.copy).textContent, b)));
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#drawer').hidden && !(e.target instanceof HTMLTextAreaElement)) closeDrawer(); });
+let dragDepth = 0;
+window.addEventListener('dragenter', e => { if ([...(e.dataTransfer?.types || [])].includes('Files')) { dragDepth++; $('#drop').hidden = false; } });
+window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) $('#drop').hidden = true; });
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#drop').hidden = true; if (e.dataTransfer?.files?.length) handleFiles(e.dataTransfer.files, null); });
+let rzRaf = 0, lastW = 0;
+new ResizeObserver(() => { const w = $('#tl').clientWidth; if (w === lastW) return; lastW = w; cancelAnimationFrame(rzRaf); rzRaf = requestAnimationFrame(() => { if (state.model) { renderTimeline(); renderHeatmap(); } }); }).observe($('#tl'));
+
+// ---------- início ----------
+(function init() {
+  const c = +LS.get('cpus'); if (c > 0) { state.cpus = c; $('#fCpu').value = c; }
+  loadDemo();
+})();
+</script>
+</body>
+</html>
